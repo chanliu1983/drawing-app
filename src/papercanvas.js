@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import paper from 'paper';
-import JSONInput from 'react-json-editor-ajrm';
-import locale from 'react-json-editor-ajrm/locale/en';
+import ReactJson from 'react-json-view';
 import SplitPane from 'react-split-pane';
 import initialData from './initialDataLoader';
 
@@ -153,6 +152,15 @@ const PaperCanvas = () => {
     };
     resizeCanvasRef.current = resizeCanvas;
 
+    // --- Add ResizeObserver to keep canvas in sync with pane size ---
+    let observer = null;
+    if (canvasRef.current && canvasRef.current.parentElement) {
+      observer = new window.ResizeObserver(() => {
+        resizeCanvas();
+      });
+      observer.observe(canvasRef.current.parentElement);
+    }
+
     if (paperState.current.lastWidth === null) {
       paperState.current.lastWidth = window.innerWidth * 0.75; // Initial 75% width
     }
@@ -161,18 +169,18 @@ const PaperCanvas = () => {
     }
 
     resizeCanvas();
-    
-    // Use setTimeout to ensure canvas is fully initialized before drawing axes
     setTimeout(() => {
       drawAxes();
       paper.view.draw();
     }, 0);
-    
     window.addEventListener('resize', resizeCanvas);
 
     return () => {
       paper.project.clear();
       window.removeEventListener('resize', resizeCanvas);
+      if (observer && canvasRef.current && canvasRef.current.parentElement) {
+        observer.unobserve(canvasRef.current.parentElement);
+      }
     };
   }, []);
 
@@ -218,6 +226,15 @@ const PaperCanvas = () => {
       stockGroup.stockName = stockName;
       stockGroup.stockId = stockData.id;
       stockGroup.position = new paper.Point(x, y);
+
+      // Update existing stock name if it exists
+      const existingBox = paperState.current.boxes.find(b => b.stockId === stockData.id);
+      if (existingBox) {
+        const textToUpdate = existingBox.children[1];
+        if (textToUpdate && textToUpdate.content !== stockName) {
+          textToUpdate.content = stockName;
+        }
+      }
 
       // Add drag functionality
       let isDragging = false;
@@ -487,6 +504,29 @@ const PaperCanvas = () => {
 
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'fixed', top: 0, left: 0 }}>
+      {/* Robust style for SplitPane resizer cursor and pointer events */}
+      <style>{`
+        .SplitPane .Resizer,
+        .Resizer,
+        .SplitPane-resizer {
+          cursor: col-resize !important;
+          pointer-events: auto !important;
+        }
+        .SplitPane .Resizer:hover,
+        .Resizer:hover,
+        .SplitPane-resizer:hover,
+        .SplitPane .Resizer:active,
+        .Resizer:active,
+        .SplitPane-resizer:active {
+          cursor: col-resize !important;
+        }
+        /* Fix for sometimes losing pointer events after drag */
+        .SplitPane .Resizer[style*="pointer-events: none"],
+        .Resizer[style*="pointer-events: none"],
+        .SplitPane-resizer[style*="pointer-events: none"] {
+          pointer-events: auto !important;
+        }
+      `}</style>
       <SplitPane split="vertical" defaultSize="75%" resizerStyle={{backgroundColor: '#ccc', width: '5px'}} onPaneResized={() => resizeCanvasRef.current && resizeCanvasRef.current()}>
         <div style={{ position: 'relative', height: '100%' }}>
           <canvas
@@ -509,21 +549,23 @@ const PaperCanvas = () => {
           </button>
         </div>
         <div style={{ height: '100%', borderLeft: '1px solid #ccc', overflowY: 'auto', display: 'flex', flexDirection: 'column', flex: 1 }}>
-          <JSONInput
-            key={JSON.stringify(jsonData)}
-            id='json-editor'
-            placeholder={jsonData}
-            reset={true}
-            locale={locale}
-            height='100vh'
-            width='100%'
-            onChange={(data) => {
-              if (!data.error && data.jsObject) {
-                setJsonData(data.jsObject);
-              }
+          <ReactJson
+            src={jsonData}
+            name={false}
+            displayDataTypes={false}
+            displayObjectSize={false}
+            enableClipboard={true}
+            style={{ flex: 1, height: '100%', fontSize: 14, textAlign: 'left', background: 'white', padding: 8, overflow: 'auto' }}
+            theme="rjv-default"
+            onEdit={e => {
+              if (e.updated_src) setJsonData(e.updated_src);
             }}
-            style={{ flex: 1, contentBox: { textAlign: 'left' } }}
-            theme='light_mitsuketa_tribute'
+            onAdd={e => {
+              if (e.updated_src) setJsonData(e.updated_src);
+            }}
+            onDelete={e => {
+              if (e.updated_src) setJsonData(e.updated_src);
+            }}
           />
         </div>
       </SplitPane>

@@ -16,7 +16,13 @@ const PaperCanvas = () => {
 
     const resizeCanvas = () => {
       if (!canvasRef.current) return;
-      paper.view.viewSize = new paper.Size(canvasRef.current.clientWidth, canvasRef.current.clientHeight);
+      const dpr = window.devicePixelRatio || 1;
+      const width = canvasRef.current.clientWidth;
+      const height = canvasRef.current.clientHeight;
+      canvasRef.current.width = width * dpr;
+      canvasRef.current.height = height * dpr;
+      paper.view.viewSize = new paper.Size(width, height);
+      paper.view.scale(dpr, dpr); // Ensure Paper.js drawing matches the device pixel ratio
       paper.view.draw();
     };
 
@@ -31,9 +37,19 @@ const PaperCanvas = () => {
 
   const addBox = () => {
     console.log('Adding box');
+    const boxWidth = 50;
+    const boxHeight = 50;
+    // Ensure the box is fully within the view
+    const minX = 0;
+    const minY = 0;
+    const maxX = paper.view.size.width - boxWidth;
+    const maxY = paper.view.size.height - boxHeight;
+    const x = Math.random() * (maxX - minX) + minX;
+    const y = Math.random() * (maxY - minY) + minY;
+
     const newBox = new paper.Path.Rectangle({
-      point: [Math.random() * paper.view.size.width, Math.random() * paper.view.size.height],
-      size: [50, 50],
+      point: [x, y],
+      size: [boxWidth, boxHeight],
       fillColor: 'blue'
     });
 
@@ -120,6 +136,11 @@ const PaperCanvas = () => {
         console.error('Connection index out of bounds');
         return;
       }
+      // Ensure the connection path has at least 3 segments
+      if (!connection.segments[0] || !connection.segments[1] || !connection.segments[2]) {
+        console.error('Connection path does not have enough segments');
+        return;
+      }
       const box1 = boxes[index];
       const box2 = boxes[index + 1];
       const start = box1.bounds.center;
@@ -136,10 +157,25 @@ const PaperCanvas = () => {
   };
 
   return (
-    <div>
-      <canvas ref={canvasRef} id="myCanvas" resize="true" style={{ width: '100%', height: '400px' }} />
-      <button onClick={addBox}>Add Box</button>
-      <button onClick={removeBox}>Remove Box</button>
+    <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'fixed', top: 0, left: 0 }}>
+      <canvas
+        ref={canvasRef}
+        id="myCanvas"
+        resize="true"
+        style={{ width: '100vw', height: '100vh', display: 'block' }}
+      />
+      <button
+        onClick={addBox}
+        style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}
+      >
+        Add Box
+      </button>
+      <button
+        onClick={removeBox}
+        style={{ position: 'absolute', top: 10, left: 100, zIndex: 10 }}
+      >
+        Remove Box
+      </button>
     </div>
   );
 };

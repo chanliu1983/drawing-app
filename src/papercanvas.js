@@ -298,95 +298,34 @@ const PaperCanvas = () => {
 
   const addBox = () => {
     console.log('Adding box');
-    const boxWidth = 50;
-    const boxHeight = 50;
-    const viewWidth = paper.view.size.width;
-    const viewHeight = paper.view.size.height;
-    const x = Math.random() * (viewWidth - boxWidth);
-    const y = Math.random() * (viewHeight - boxHeight);
-    setCoords({ x: Math.round(x), y: Math.round(y) });
-
-    const newBox = new paper.Path.Rectangle({
-      point: [x, y],
-      size: [boxWidth, boxHeight],
-      fillColor: 'lightblue',
-      strokeColor: 'blue',
-      strokeWidth: 2
-    });
-
-    // Add text label for the stock name
-    const stockName = `Stock ${paperState.current.boxes.length + 1}`;
-    const textLabel = new paper.PointText({
-      point: [x + boxWidth/2, y + boxHeight/2],
-      content: stockName,
-      fillColor: 'black',
-      fontSize: 12,
-      justification: 'center'
-    });
-
-    // Group the box and text together
-    const stockGroup = new paper.Group([newBox, textLabel]);
-    stockGroup.stockName = stockName;
     // Generate a unique stock ID
-    const maxId = Math.max(0, ...paperState.current.boxes.map(b => b.stockId || 0));
-    stockGroup.stockId = maxId + 1;
-
-    let isDragging = false;
-    let offset = new paper.Point();
-
-    stockGroup.onMouseDown = (event) => {
-      console.log('Stock mouse down');
-      isDragging = true;
-      offset = stockGroup.position.subtract(event.point);
-    };
-
-    stockGroup.onMouseDrag = (event) => {
-      if (isDragging) {
-        console.log('Stock dragging');
-        stockGroup.position = event.point.add(offset);
-        const boxIndex = paperState.current.boxes.findIndex(b => b === stockGroup);
-        updateConnectionsOnDrag(stockGroup, boxIndex);
+    const maxId = Math.max(0, ...jsonData.boxes.map(b => b.id || 0));
+    const newStock = {
+      id: maxId + 1,
+      name: `Stock ${maxId + 1}`,
+      type: 'stock',
+      position: {
+        x: Math.round(Math.random() * (paper.view.size.width - 50)),
+        y: Math.round(Math.random() * (paper.view.size.height - 50))
       }
     };
-
-    stockGroup.onMouseUp = () => {
-      console.log('Stock mouse up');
-      isDragging = false;
-    };
-
-    setBoxes(prevBoxes => {
-      const newBoxes = [...prevBoxes, stockGroup];
-      console.log('New stocks:', newBoxes.length);
-      updateConnectionsAfterBoxChange(newBoxes);
-      
-      // Update JSON data
-      const boxesData = newBoxes.map((stock, index) => ({
-        id: stock.stockId || (index + 1),
-        name: stock.stockName || `Stock ${index + 1}`,
-        type: 'stock',
-        position: {
-          x: Math.round(stock.position.x),
-          y: Math.round(stock.position.y)
-        }
-      }));
-      setJsonData(prev => ({ ...prev, boxes: boxesData }));
-      
-      return newBoxes;
-    });
-
-    paper.view.draw();
+    setJsonData(prev => ({
+      ...prev,
+      boxes: [...prev.boxes, newStock]
+    }));
   };
 
   const removeBox = () => {
     console.log('Removing stock');
-    if (paperState.current.boxes.length > 0) {
-      const lastStock = paperState.current.boxes.pop();
-      lastStock.remove();
-      const newBoxes = [...paperState.current.boxes];
-      setBoxes(newBoxes);
-      updateConnectionsAfterBoxChange(newBoxes);
-      paper.view.draw();
-    }
+    setJsonData(prev => {
+      if (prev.boxes.length === 0) return prev;
+      const removedId = prev.boxes[prev.boxes.length - 1].id;
+      return {
+        ...prev,
+        boxes: prev.boxes.slice(0, -1),
+        connections: prev.connections.filter(conn => conn.fromStockId !== removedId && conn.toStockId !== removedId)
+      };
+    });
   };
 
   // Helper function to calculate edge intersection point
@@ -424,28 +363,25 @@ const PaperCanvas = () => {
     console.log('Creating connection');
     const start = getEdgePoint(box1, box2); // from box1 (from) to box2 (to)
     const end = getEdgePoint(box2, box1);   // to box2 (to) from box1 (from)
-    const handle1 = new paper.Point((start.x + end.x) / 2, start.y);
-    const handle2 = new paper.Point((start.x + end.x) / 2, end.y);
-
-    const path = new paper.Path({
-        segments: [new paper.Segment(start), new paper.Segment(end)],
-        strokeColor: 'black',
-        strokeWidth: 2
-    });
-
-    path.segments[0].handleOut = handle1.subtract(start);
-    path.segments[1].handleIn = handle2.subtract(end);
-
-    // Arrow always on 'to' side (end) - directional based on connection
     const arrowSize = 8;
     const direction = end.subtract(start).normalize();
     const perpendicular = new paper.Point(-direction.y, direction.x);
-    
-    const arrowTip = end;
+    // Calculate the base of the arrowhead
     const arrowBase = end.subtract(direction.multiply(arrowSize));
     const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
     const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
-    
+    // The curve should end at the base of the arrow, not the box
+    const handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
+    const handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
+    const path = new paper.Path({
+        segments: [new paper.Segment(start), new paper.Segment(arrowBase)],
+        strokeColor: 'black',
+        strokeWidth: 2
+    });
+    path.segments[0].handleOut = handle1.subtract(start);
+    path.segments[1].handleIn = handle2.subtract(arrowBase);
+    // Arrow always on 'to' side (end) - directional based on connection
+    const arrowTip = end;
     const arrowHead = new paper.Path({
         segments: [arrowTip, arrowLeft, arrowRight],
         strokeColor: 'black',
@@ -453,11 +389,10 @@ const PaperCanvas = () => {
         fillColor: 'black',
         closed: true
     });
-
     // Add feedback loop name label if connection data is provided
     let nameLabel = null;
     if (connectionData && connectionData.name) {
-      const midPoint = start.add(end).divide(2);
+      const midPoint = start.add(arrowBase).divide(2);
       nameLabel = new paper.PointText({
         point: midPoint.add(new paper.Point(0, -10)),
         content: connectionData.name,
@@ -466,16 +401,12 @@ const PaperCanvas = () => {
         justification: 'center'
       });
     }
-
     const connectionGroup = nameLabel ? 
       new paper.Group([path, arrowHead, nameLabel]) : 
       new paper.Group([path, arrowHead]);
-    
-    // Store connection data for updates
     if (connectionData) {
       connectionGroup.connectionData = connectionData;
     }
-    
     return connectionGroup;
   };
 
@@ -534,34 +465,33 @@ const PaperCanvas = () => {
       if (!fromBox || !toBox) return;
       const start = getEdgePoint(fromBox, toBox);
       const end = getEdgePoint(toBox, fromBox);
-      const handle1 = new paper.Point((start.x + end.x) / 2, start.y);
-      const handle2 = new paper.Point((start.x + end.x) / 2, end.y);
+      const arrowSize = 8;
+      const direction = end.subtract(start).normalize();
+      const perpendicular = new paper.Point(-direction.y, direction.x);
+      const arrowBase = end.subtract(direction.multiply(arrowSize));
+      const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
+      const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
+      // The curve should end at the base of the arrow, not the box
+      const handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
+      const handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
       const path = connection.children[0];
       if (path && path.segments) {
         path.segments[0].point = start;
-        path.segments[1].point = end;
+        path.segments[1].point = arrowBase;
         path.segments[0].handleOut = handle1.subtract(start);
-        path.segments[1].handleIn = handle2.subtract(end);
+        path.segments[1].handleIn = handle2.subtract(arrowBase);
       }
       // Arrow always on 'to' side
       const arrowHead = connection.children[1];
       if (arrowHead && arrowHead.segments) {
-        const arrowSize = 8;
-        const direction = end.subtract(start).normalize();
-        const perpendicular = new paper.Point(-direction.y, direction.x);
-        const arrowTip = end;
-        const arrowBase = end.subtract(direction.multiply(arrowSize));
-        const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
-        const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
-        arrowHead.segments[0].point = arrowTip;
+        arrowHead.segments[0].point = end;
         arrowHead.segments[1].point = arrowLeft;
         arrowHead.segments[2].point = arrowRight;
       }
-      
       // Update connection name label if it exists
       const nameLabel = connection.children[2];
       if (nameLabel && nameLabel.content) {
-        const midPoint = start.add(end).divide(2);
+        const midPoint = start.add(arrowBase).divide(2);
         nameLabel.point = midPoint.add(new paper.Point(0, -10));
       }
     });
@@ -593,8 +523,10 @@ const PaperCanvas = () => {
         </div>
         <div style={{ height: '100%', borderLeft: '1px solid #ccc', overflowY: 'auto', display: 'flex', flexDirection: 'column', flex: 1 }}>
           <JSONInput
+            key={JSON.stringify(jsonData)}
             id='json-editor'
             placeholder={jsonData}
+            reset={true}
             locale={locale}
             height='100vh'
             width='100%'

@@ -355,7 +355,7 @@ const PaperCanvas = () => {
             x: {coords.x}, y: {coords.y}
           </div>
         </div>
-        <div style={{ height: '100%', borderLeft: '1px solid #ccc', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ height: '100%', borderLeft: '1px solid #ccc', overflowY: 'auto', display: 'flex', flexDirection: 'column', flex: 1 }}>
           <JSONInput
             id='json-editor'
             placeholder={jsonData}
@@ -363,7 +363,8 @@ const PaperCanvas = () => {
             height='100vh'
             width='100%'
             onChange={(data) => setJsonData(data.jsObject)}
-            style={{ flex: 1 }}
+            style={{ flex: 1, contentBox: { textAlign: 'left' } }}
+            theme='light_mitsuketa_tribute'
           />
         </div>
       </SplitPane>

@@ -70,14 +70,19 @@ const PaperCanvas = () => {
     paper.setup(canvasRef.current);
 
     const updateConnectionsForResize = () => {
+      if (!jsonData || !jsonData.connections) return;
+      
       paperState.current.connections.forEach((connection, index) => {
-        if (index + 1 >= paperState.current.boxes.length) {
-          return;
-        }
-        const box1 = paperState.current.boxes[index];
-        const box2 = paperState.current.boxes[index + 1];
-        const start = getEdgePoint(box2, box1);
-        const end = getEdgePoint(box1, box2);
+        const connData = jsonData.connections[index];
+        if (!connData) return;
+        
+        const fromStock = paperState.current.boxes.find(box => box.stockId === connData.fromStockId);
+        const toStock = paperState.current.boxes.find(box => box.stockId === connData.toStockId);
+        
+        if (!fromStock || !toStock) return;
+        
+        const start = getEdgePoint(fromStock, toStock);
+        const end = getEdgePoint(toStock, fromStock);
         const handle1 = new paper.Point((start.x + end.x) / 2, start.y);
         const handle2 = new paper.Point((start.x + end.x) / 2, end.y);
 

@@ -3,6 +3,8 @@ import paper from 'paper';
 import JSONInput from 'react-json-editor-ajrm';
 import locale from 'react-json-editor-ajrm/locale/en';
 import SplitPane from 'react-split-pane';
+import initialData from './initialDataLoader';
+
 
 const PaperCanvas = () => {
   const canvasRef = useRef(null);
@@ -10,44 +12,7 @@ const PaperCanvas = () => {
   const [boxes, setBoxes] = useState([]);
   const [connections, setConnections] = useState([]);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
-  const [jsonData, setJsonData] = useState({
-    boxes: [
-      { 
-        id: 1,
-        name: "Population", 
-        type: "stock",
-        position: { x: 150, y: 150 } 
-      },
-      { 
-        id: 2,
-        name: "Birth Rate", 
-        type: "stock",
-        position: { x: 350, y: 150 } 
-      },
-      { 
-        id: 3,
-        name: "Resources", 
-        type: "stock",
-        position: { x: 250, y: 300 } 
-      }
-    ],
-    connections: [
-      { 
-        id: 1,
-        name: "Population Growth",
-        type: "feedback_loop",
-        fromStockId: 1, 
-        toStockId: 2
-      },
-      { 
-        id: 2,
-        name: "Resource Consumption",
-        type: "feedback_loop",
-        fromStockId: 1, 
-        toStockId: 3
-      }
-    ]
-  });
+  const [jsonData, setJsonData] = useState(initialData);
 
   const paperState = useRef({
     boxes: [],
@@ -436,7 +401,24 @@ const PaperCanvas = () => {
     
     setConnections(newConnections);
     paperState.current.connections = newConnections;
-    setJsonData(prev => ({ ...prev, connections: connectionsData }));
+    // Only update positions, not names, to preserve manual edits from the editor
+    setJsonData(prev => ({
+      ...prev,
+      boxes: prev.boxes.map(box => {
+        const updatedBox = newBoxes.find(b => b.stockId === box.id);
+        if (updatedBox) {
+          return {
+            ...box,
+            position: {
+              x: Math.round(updatedBox.position.x),
+              y: Math.round(updatedBox.position.y)
+            }
+          };
+        }
+        return box;
+      }),
+      connections: prev.connections // preserve names and structure
+    }));
     console.log('New connections:', newConnections.length);
   };
 

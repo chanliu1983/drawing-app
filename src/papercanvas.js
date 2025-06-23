@@ -1,15 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import paper from 'paper';
+import JSONInput from 'react-json-editor-ajrm';
+import locale from 'react-json-editor-ajrm/locale/en';
+import SplitPane from 'react-split-pane';
 
 const PaperCanvas = () => {
   const canvasRef = useRef(null);
+  const resizeCanvasRef = useRef(null);
   const [boxes, setBoxes] = useState([]);
   const [connections, setConnections] = useState([]);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const [jsonData, setJsonData] = useState({
+    boxes: [],
+    connections: []
+  });
 
   const paperState = useRef({
     boxes: [],
     connections: [],
+    lastWidth: null,
     lastHeight: null,
   });
   paperState.current.boxes = boxes;
@@ -82,35 +91,67 @@ const PaperCanvas = () => {
     };
 
     const resizeCanvas = () => {
-      if (!canvasRef.current) return;
+      if (!canvasRef.current || !canvasRef.current.parentElement) return;
+
+      const canvasContainer = canvasRef.current.parentElement;
+      const newWidth = canvasContainer.clientWidth;
+      const newHeight = canvasContainer.clientHeight;
 
       const oldHeight = paperState.current.lastHeight;
-      const newHeight = window.innerHeight;
 
+      // Handle height changes - move boxes to maintain relative position from bottom
       if (oldHeight !== null) {
         const deltaY = newHeight - oldHeight;
-        paperState.current.boxes.forEach(box => {
-          box.position.y += deltaY;
-        });
+        if (deltaY !== 0) {
+          paperState.current.boxes.forEach(box => {
+            box.position.y += deltaY;
+          });
+        }
       }
 
+      // Store new dimensions
+      paperState.current.lastWidth = newWidth;
       paperState.current.lastHeight = newHeight;
 
-      const width = window.innerWidth;
-      canvasRef.current.width = width;
+      // Update canvas dimensions
+      canvasRef.current.width = newWidth;
       canvasRef.current.height = newHeight;
-      paper.view.viewSize = new paper.Size(width, newHeight);
-
+      
+      // Update Paper.js view size without scaling content
+      paper.view.setViewSize(new paper.Size(newWidth, newHeight));
+      
+      // Ensure pixel ratio is maintained
+      const pixelRatio = window.devicePixelRatio || 1;
+      canvasRef.current.style.width = newWidth + 'px';
+      canvasRef.current.style.height = newHeight + 'px';
+      canvasRef.current.width = newWidth * pixelRatio;
+      canvasRef.current.height = newHeight * pixelRatio;
+      paper.view.setViewSize(new paper.Size(newWidth, newHeight));
+      
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.scale(pixelRatio, pixelRatio);
+      
       updateConnectionsForResize();
       drawAxes();
       paper.view.draw();
     };
+    resizeCanvasRef.current = resizeCanvas;
 
+    if (paperState.current.lastWidth === null) {
+      paperState.current.lastWidth = window.innerWidth * 0.75; // Initial 75% width
+    }
     if (paperState.current.lastHeight === null) {
       paperState.current.lastHeight = window.innerHeight;
     }
 
     resizeCanvas();
+    
+    // Use setTimeout to ensure canvas is fully initialized before drawing axes
+    setTimeout(() => {
+      drawAxes();
+      paper.view.draw();
+    }, 0);
+    
     window.addEventListener('resize', resizeCanvas);
 
     return () => {
@@ -162,6 +203,17 @@ const PaperCanvas = () => {
       const newBoxes = [...prevBoxes, newBox];
       console.log('New boxes:', newBoxes.length);
       updateConnectionsAfterBoxChange(newBoxes);
+      
+      // Update JSON data
+      const boxesData = newBoxes.map((box, index) => ({
+        id: index,
+        position: {
+          x: Math.round(box.position.x),
+          y: Math.round(box.position.y)
+        }
+      }));
+      setJsonData(prev => ({ ...prev, boxes: boxesData }));
+      
       return newBoxes;
     });
 
@@ -203,16 +255,49 @@ const PaperCanvas = () => {
     console.log('Updating connections after box change');
     paperState.current.connections.forEach(conn => conn.remove());
     const newConnections = [];
+    const connectionsData = [];
+    
     for (let i = 0; i < newBoxes.length - 1; i++) {
       const connection = createConnection(newBoxes[i], newBoxes[i + 1]);
       newConnections.push(connection);
+      
+      // Add connection data for JSON
+      connectionsData.push({
+        from: i,
+        to: i + 1,
+        points: {
+          start: {
+            x: Math.round(newBoxes[i].bounds.center.x),
+            y: Math.round(newBoxes[i].bounds.center.y)
+          },
+          end: {
+            x: Math.round(newBoxes[i + 1].bounds.center.x),
+            y: Math.round(newBoxes[i + 1].bounds.center.y)
+          }
+        }
+      });
     }
+    
     setConnections(newConnections);
     paperState.current.connections = newConnections;
+    setJsonData(prev => ({ ...prev, connections: connectionsData }));
     console.log('New connections:', newConnections.length);
   };
 
   const updateConnectionsOnDrag = (draggedBox, boxIndex) => {
+    // Update JSON data for the dragged box
+    setJsonData(prev => {
+      const newBoxes = [...prev.boxes];
+      newBoxes[boxIndex] = {
+        ...newBoxes[boxIndex],
+        position: {
+          x: Math.round(draggedBox.position.x),
+          y: Math.round(draggedBox.position.y)
+        }
+      };
+      return { ...prev, boxes: newBoxes };
+    });
+
     if (boxIndex > 0) {
       const prevConnection = paperState.current.connections[boxIndex - 1];
       if (prevConnection) {
@@ -246,27 +331,42 @@ const PaperCanvas = () => {
 
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'fixed', top: 0, left: 0 }}>
-      <canvas
-        ref={canvasRef}
-        id="myCanvas"
-        resize="true"
-        style={{ width: '100vw', height: '100vh', display: 'block' }}
-      />
-      <button
-        onClick={addBox}
-        style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}
-      >
-        Add Box
-      </button>
-      <button
-        onClick={removeBox}
-        style={{ position: 'absolute', top: 10, left: 100, zIndex: 10 }}
-      >
-        Remove Box
-      </button>
-      <div style={{ position: 'absolute', top: 10, left: 200, zIndex: 10, backgroundColor: 'white', padding: '5px' }}>
-        x: {coords.x}, y: {coords.y}
-      </div>
+      <SplitPane split="vertical" defaultSize="75%" resizerStyle={{backgroundColor: '#ccc', width: '5px'}} onPaneResized={() => resizeCanvasRef.current && resizeCanvasRef.current()}>
+        <div style={{ position: 'relative', height: '100%' }}>
+          <canvas
+            ref={canvasRef}
+            id="myCanvas"
+            resize="true"
+            style={{ display: 'block', width: '100%', height: '100%' }}
+          />
+          <button
+            onClick={addBox}
+            style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}
+          >
+            Add Box
+          </button>
+          <button
+            onClick={removeBox}
+            style={{ position: 'absolute', top: 10, left: 100, zIndex: 10 }}
+          >
+            Remove Box
+          </button>
+          <div style={{ position: 'absolute', top: 10, left: 200, zIndex: 10, backgroundColor: 'white', padding: '5px' }}>
+            x: {coords.x}, y: {coords.y}
+          </div>
+        </div>
+        <div style={{ height: '100%', borderLeft: '1px solid #ccc', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <JSONInput
+            id='json-editor'
+            placeholder={jsonData}
+            locale={locale}
+            height='100vh'
+            width='100%'
+            onChange={(data) => setJsonData(data.jsObject)}
+            style={{ flex: 1 }}
+          />
+        </div>
+      </SplitPane>
     </div>
   );
 };

@@ -161,13 +161,11 @@ const PaperCanvas = () => {
     try {
       await dbService.saveCanvas(name, jsonData);
       console.log(`Canvas '${name}' saved successfully`);
-      alert(`Canvas '${name}' saved successfully!`);
       if (!availableCanvases.includes(name)) {
         setAvailableCanvases(prev => [...prev, name].sort());
       }
     } catch (error) {
       console.error('Failed to save canvas:', error);
-      alert('Failed to save canvas. Please try again.');
     }
   };
 
@@ -713,7 +711,7 @@ const PaperCanvas = () => {
     
     const boxBounds = box.bounds;
     const boxCenter = box.position;
-    const loopRadius = 50; // Radius of the self-connection loop
+    const loopRadius = 150; // Radius of the self-connection loop
     const arrowSize = 8;
     
     // Position the loop on the right side of the box
@@ -945,7 +943,7 @@ const PaperCanvas = () => {
         // For self-connections, update the position but keep the same relative structure
         const boxBounds = fromBox.bounds;
         const boxCenter = fromBox.position;
-        const loopRadius = 50;
+        const loopRadius = 150;
         
         // Update the self-connection position
         const startPoint = new paper.Point(boxBounds.right, boxCenter.y);

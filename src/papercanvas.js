@@ -176,25 +176,48 @@ const PaperCanvas = () => {
         
         const end = getEdgePoint(fromStock, toStock);
         const start = getEdgePoint(toStock, fromStock);
-        const handle1 = new paper.Point((start.x + end.x) / 2, start.y);
-        const handle2 = new paper.Point((start.x + end.x) / 2, end.y);
+        
+        // Calculate direction and apply direction-based handle logic
+        const arrowSize = 8;
+        const rawDirection = end.subtract(start);
+        let direction;
+        if (Math.abs(rawDirection.x) > Math.abs(rawDirection.y)) {
+          direction = new paper.Point(rawDirection.x > 0 ? 1 : -1, 0);
+        } else {
+          direction = new paper.Point(0, rawDirection.y > 0 ? 1 : -1);
+        }
+        const arrowBase = end.subtract(direction.multiply(arrowSize));
+        
+        // Handle calculations should follow the arrow direction
+        let handle1, handle2;
+        if (Math.abs(direction.x) > 0) {
+          // Horizontal arrow - curve should be vertical
+          handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
+          handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
+        } else {
+          // Vertical arrow - curve should be horizontal
+          handle1 = new paper.Point(start.x, (start.y + arrowBase.y) / 2);
+          handle2 = new paper.Point(arrowBase.x, (start.y + arrowBase.y) / 2);
+        }
 
         // Access the path (first child) from the connection group
         const path = connection.children[0];
         if (path && path.segments && path.segments.length === 2) {
           path.segments[0].point = start;
-          path.segments[1].point = end;
+          path.segments[1].point = arrowBase;
           path.segments[0].handleOut = handle1.subtract(start);
-          path.segments[1].handleIn = handle2.subtract(end);
+          path.segments[1].handleIn = handle2.subtract(arrowBase);
         }
         
-        // Update arrow head (second child) - fixed triangle
+        // Update arrow head (second child) with proper direction-based calculations
         const arrowHead = connection.children[1];
         if (arrowHead && arrowHead.segments) {
-          const arrowSize = 8;
-          arrowHead.segments[0].point = new paper.Point(end.x - arrowSize, end.y - arrowSize/2);
-          arrowHead.segments[1].point = new paper.Point(end.x, end.y);
-          arrowHead.segments[2].point = new paper.Point(end.x - arrowSize, end.y + arrowSize/2);
+          const perpendicular = new paper.Point(-direction.y, direction.x);
+          const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
+          const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
+          arrowHead.segments[0].point = end;  // arrowTip
+          arrowHead.segments[1].point = arrowLeft;
+          arrowHead.segments[2].point = arrowRight;
         }
       });
     };
@@ -588,8 +611,17 @@ const PaperCanvas = () => {
     const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
     const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
     // The curve should end at the base of the arrow, not the box
-    const handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
-    const handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
+    // Handle calculations should follow the arrow direction
+    let handle1, handle2;
+    if (Math.abs(direction.x) > 0) {
+      // Horizontal arrow - curve should be vertical
+      handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
+      handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
+    } else {
+      // Vertical arrow - curve should be horizontal
+      handle1 = new paper.Point(start.x, (start.y + arrowBase.y) / 2);
+      handle2 = new paper.Point(arrowBase.x, (start.y + arrowBase.y) / 2);
+    }
     const path = new paper.Path({
         segments: [new paper.Segment(start), new paper.Segment(arrowBase)],
         strokeColor: 'black',
@@ -732,8 +764,17 @@ const PaperCanvas = () => {
       const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
       const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
       // The curve should end at the base of the arrow, not the box
-      const handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
-      const handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
+      // Handle calculations should follow the arrow direction
+      let handle1, handle2;
+      if (Math.abs(direction.x) > 0) {
+        // Horizontal arrow - curve should be vertical
+        handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
+        handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
+      } else {
+        // Vertical arrow - curve should be horizontal
+        handle1 = new paper.Point(start.x, (start.y + arrowBase.y) / 2);
+        handle2 = new paper.Point(arrowBase.x, (start.y + arrowBase.y) / 2);
+      }
       const path = connection.children[0];
       if (path && path.segments) {
         path.segments[0].point = start;

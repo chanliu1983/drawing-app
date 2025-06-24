@@ -40,8 +40,17 @@ export const createConnection = (box1, box2, connectionData, paper, getEdgePoint
   const arrowBase = end.subtract(direction.multiply(arrowSize));
   const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
   const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
-  const handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
-  const handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
+  // Handle calculations should follow the arrow direction
+  let handle1, handle2;
+  if (Math.abs(direction.x) > 0) {
+    // Horizontal arrow - curve should be vertical
+    handle1 = new paper.Point((start.x + arrowBase.x) / 2, start.y);
+    handle2 = new paper.Point((start.x + arrowBase.x) / 2, arrowBase.y);
+  } else {
+    // Vertical arrow - curve should be horizontal
+    handle1 = new paper.Point(start.x, (start.y + arrowBase.y) / 2);
+    handle2 = new paper.Point(arrowBase.x, (start.y + arrowBase.y) / 2);
+  }
   const path = new paper.Path({
     segments: [new paper.Segment(start), new paper.Segment(arrowBase)],
     strokeColor: 'black',

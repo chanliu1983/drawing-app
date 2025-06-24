@@ -105,7 +105,7 @@ const PaperCanvas = () => {
     const maxId = Math.max(0, ...jsonData.connections.map(c => c.id || 0));
     const fromStockData = jsonData.boxes.find(box => box.id === fromStockId);
     const toStockData = jsonData.boxes.find(box => box.id === toStockId);
-    const connectionName = fromStockData && toStockData ? `${fromStockData.name} → ${toStockData.name}` : `Connection ${maxId + 1}`;
+    const connectionName = fromStockData && toStockData ? `${fromStockData.name} to ${toStockData.name}` : `Connection ${maxId + 1}`;
     const newConnection = {
       id: maxId + 1,
       name: connectionName,

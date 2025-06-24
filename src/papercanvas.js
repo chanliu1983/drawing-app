@@ -10,7 +10,6 @@ const PaperCanvas = () => {
   const resizeCanvasRef = useRef(null);
   const [boxes, setBoxes] = useState([]);
   const [connections, setConnections] = useState([]);
-  const [coords, setCoords] = useState({ x: 0, y: 0 });
   const [jsonData, setJsonData] = useState(initialData);
   const [editorValue, setEditorValue] = useState(JSON.stringify(initialData, null, 2));
   
@@ -24,6 +23,7 @@ const PaperCanvas = () => {
   const [editingStock, setEditingStock] = useState(null); // For editing form
   const [selectedBoxId, setSelectedBoxId] = useState(null); // Track selected box
   const [jsonEditorVisible, setJsonEditorVisible] = useState(true); // Control JSON editor visibility
+  const [splitSize, setSplitSize] = useState('70%'); // Control split pane size
 
   const paperState = useRef({
     boxes: [],
@@ -1033,211 +1033,231 @@ const PaperCanvas = () => {
         .SplitPane-resizer {
           cursor: col-resize !important;
           pointer-events: auto !important;
+          background-color: #e0e0e0;
+          border: 1px solid #ccc;
+          transition: all 0.2s ease;
         }
         .SplitPane .Resizer:hover,
         .Resizer:hover,
-        .SplitPane-resizer:hover,
+        .SplitPane-resizer:hover {
+          cursor: col-resize !important;
+          background-color: #007acc;
+          border-color: #005a9e;
+        }
         .SplitPane .Resizer:active,
         .Resizer:active,
         .SplitPane-resizer:active {
           cursor: col-resize !important;
+          background-color: #005a9e;
+          border-color: #004080;
         }
-        /* Fix for sometimes losing pointer events after drag */
         .SplitPane .Resizer[style*="pointer-events: none"],
         .Resizer[style*="pointer-events: none"],
         .SplitPane-resizer[style*="pointer-events: none"] {
           pointer-events: auto !important;
         }
-        
-        /* Custom cursor for stock placement */
         .stock-placement-cursor {
           cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='2' ry='2' fill='%234CAF50' fill-opacity='0.7' stroke='%23333' stroke-width='2'/%3E%3Ctext x='16' y='20' font-family='Arial' font-size='12' text-anchor='middle' fill='white'%3ES%3C/text%3E%3C/svg%3E") 16 16, crosshair;
         }
       `}</style>
-      {/* Always render the canvas, only toggle the JSON editor */}
-      <div style={{ width: jsonEditorVisible ? '75%' : '100%', height: '100%', position: 'absolute', left: 0, top: 0 }}>
-        <canvas
-          ref={canvasRef}
-          id="myCanvas"
-          resize="true"
-          className={currentMode === 'add' ? 'stock-placement-cursor' : ''}
-          style={{ 
-            display: 'block', 
-            width: '100%', 
-            height: '100%',
-            cursor: currentMode === 'add' ? 'crosshair' : currentMode === 'connect' ? 'crosshair' : 'default'
-          }}
-          onMouseMove={(e) => {
-            if (currentMode === 'connect' && connectionStart && paper.project) {
-              const rect = e.target.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const y = e.clientY - rect.top;
-              // Remove existing temp line
-              if (tempConnectionLine) {
-                tempConnectionLine.remove();
-              }
-              // Find the starting stock position
-              const startStock = boxes.find(box => box.stockId === connectionStart);
-              if (startStock) {
-                const tempLine = new paper.Path.Line(
-                  startStock.position,
-                  new paper.Point(x, y)
-                );
-                tempLine.strokeColor = 'red';
-                tempLine.strokeWidth = 2;
-                tempLine.dashArray = [5, 5];
-                setTempConnectionLine(tempLine);
-                paper.view.draw();
-              }
-            }
-          }}
-          onClick={(e) => {
-            if (currentMode === 'add' && pendingStockData) {
-              // Get canvas-relative coordinates
-              const rect = e.target.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const y = e.clientY - rect.top;
-              placeStockAtPosition(x, y);
-            } else if (currentMode === 'connect') {
-              // Get canvas-relative coordinates for hit testing
-              const rect = e.target.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const y = e.clientY - rect.top;
-              const point = new paper.Point(x, y);
-              
-              // Use Paper.js hit testing to find clicked stock
-              const hitResult = paper.project.hitTest(point);
-              
-              if (hitResult && hitResult.item) {
-                console.log('Hit test result:', hitResult.item);
-                
-                // Try to find a stock by checking all boxes
-                const clickedPoint = new paper.Point(x, y);
-                console.log('Click coordinates:', x, y);
-                let foundStock = null;
-                
-                // Check if the click is within any stock box bounds
-                for (const box of paperState.current.boxes) {
-                  console.log('Checking box', box.stockId, 'bounds:', box.bounds.toString(), 'contains click:', box.bounds.contains(clickedPoint));
-                  if (box.bounds.contains(clickedPoint)) {
-                    console.log('Found box containing click point:', box.stockId);
-                    foundStock = box;
-                    break;
-                  }
+      <SplitPane
+        split="vertical"
+        minSize={200}
+        size={jsonEditorVisible ? splitSize : '100vw'}
+        onChange={size => setSplitSize(size)}
+        style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh' }}
+      >
+        {/* Canvas pane */}
+        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+          <canvas
+            ref={canvasRef}
+            id="myCanvas"
+            resize="true"
+            className={currentMode === 'add' ? 'stock-placement-cursor' : ''}
+            style={{ 
+              display: 'block', 
+              width: '100%', 
+              height: '100%',
+              cursor: currentMode === 'add' ? 'crosshair' : currentMode === 'connect' ? 'crosshair' : 'default'
+            }}
+            onMouseMove={(e) => {
+              if (currentMode === 'connect' && connectionStart && paper.project) {
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                // Remove existing temp line
+                if (tempConnectionLine) {
+                  tempConnectionLine.remove();
                 }
+                // Find the starting stock position
+                const startStock = boxes.find(box => box.stockId === connectionStart);
+                if (startStock) {
+                  const tempLine = new paper.Path.Line(
+                    startStock.position,
+                    new paper.Point(x, y)
+                  );
+                  tempLine.strokeColor = 'red';
+                  tempLine.strokeWidth = 2;
+                  tempLine.dashArray = [5, 5];
+                  setTempConnectionLine(tempLine);
+                  paper.view.draw();
+                }
+              }
+            }}
+            onClick={(e) => {
+              if (currentMode === 'add' && pendingStockData) {
+                // Get canvas-relative coordinates
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                placeStockAtPosition(x, y);
+              } else if (currentMode === 'connect') {
+                // Get canvas-relative coordinates for hit testing
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const point = new paper.Point(x, y);
                 
-                if (foundStock) {
-                  console.log('Found stock with ID:', foundStock.stockId);
-                  // Found a stock, handle connection logic
-                  handleConnectionClick(foundStock.stockId);
-                } else {
-                  // Try the original parent traversal method as fallback
-                  let stockGroup = hitResult.item;
-                  console.log('Starting parent traversal from:', stockGroup);
+                // Use Paper.js hit testing to find clicked stock
+                const hitResult = paper.project.hitTest(point);
+                
+                if (hitResult && hitResult.item) {
+                  console.log('Hit test result:', hitResult.item);
                   
-                  // First try to find by stockId
-                  while (stockGroup && !stockGroup.stockId) {
-                    console.log('Traversing parent:', stockGroup.parent);
-                    stockGroup = stockGroup.parent;
+                  // Try to find a stock by checking all boxes
+                  const clickedPoint = new paper.Point(x, y);
+                  console.log('Click coordinates:', x, y);
+                  let foundStock = null;
+                  
+                  // Check if the click is within any stock box bounds
+                  for (const box of paperState.current.boxes) {
+                    console.log('Checking box', box.stockId, 'bounds:', box.bounds.toString(), 'contains click:', box.bounds.contains(clickedPoint));
+                    if (box.bounds.contains(clickedPoint)) {
+                      console.log('Found box containing click point:', box.stockId);
+                      foundStock = box;
+                      break;
+                    }
                   }
                   
-                  if (stockGroup && stockGroup.stockId) {
-                    console.log('Found stock with ID (via parent traversal):', stockGroup.stockId);
+                  if (foundStock) {
+                    console.log('Found stock with ID:', foundStock.stockId);
                     // Found a stock, handle connection logic
-                    handleConnectionClick(stockGroup.stockId);
+                    handleConnectionClick(foundStock.stockId);
                   } else {
-                    // If stockId not found, try to find by checking all boxes
-                    console.log('No stockId found, checking all boxes');
-                    let foundBox = null;
+                    // Try the original parent traversal method as fallback
+                    let stockGroup = hitResult.item;
+                    console.log('Starting parent traversal from:', stockGroup);
                     
-                    for (const box of paperState.current.boxes) {
-                      // Check if the hit result item is a child of this box
-                      let isChild = false;
-                      let currentItem = hitResult.item;
+                    // First try to find by stockId
+                    while (stockGroup && !stockGroup.stockId) {
+                      console.log('Traversing parent:', stockGroup.parent);
+                      stockGroup = stockGroup.parent;
+                    }
+                    
+                    if (stockGroup && stockGroup.stockId) {
+                      console.log('Found stock with ID (via parent traversal):', stockGroup.stockId);
+                      // Found a stock, handle connection logic
+                      handleConnectionClick(stockGroup.stockId);
+                    } else {
+                      // If stockId not found, try to find by checking all boxes
+                      console.log('No stockId found, checking all boxes');
+                      let foundBox = null;
                       
-                      while (currentItem && !isChild) {
-                        if (currentItem === box || currentItem.parent === box) {
-                          isChild = true;
+                      for (const box of paperState.current.boxes) {
+                        // Check if the hit result item is a child of this box
+                        let isChild = false;
+                        let currentItem = hitResult.item;
+                        
+                        while (currentItem && !isChild) {
+                          if (currentItem === box || currentItem.parent === box) {
+                            isChild = true;
+                            break;
+                          }
+                          currentItem = currentItem.parent;
+                        }
+                        
+                        if (isChild) {
+                          console.log('Found box containing hit item:', box.stockId);
+                          foundBox = box;
                           break;
                         }
-                        currentItem = currentItem.parent;
                       }
                       
-                      if (isChild) {
-                        console.log('Found box containing hit item:', box.stockId);
-                        foundBox = box;
-                        break;
-                      }
-                    }
-                    
-                    if (foundBox) {
-                      console.log('Found stock with ID (via box search):', foundBox.stockId);
-                      handleConnectionClick(foundBox.stockId);
-                    } else {
-                      console.log('No stock group found, canceling connection');
-                      // Clicked on empty space or non-stock item, cancel connection
-                      if (connectionStart) {
-                        cancelConnectionTool();
+                      if (foundBox) {
+                        console.log('Found stock with ID (via box search):', foundBox.stockId);
+                        handleConnectionClick(foundBox.stockId);
+                      } else {
+                        console.log('No stock group found, canceling connection');
+                        // Clicked on empty space or non-stock item, cancel connection
+                        if (connectionStart) {
+                          cancelConnectionTool();
+                        }
                       }
                     }
                   }
+                } else {
+                  console.log('No hit result, canceling connection');
+                  // Clicked on empty space, cancel connection
+                  if (connectionStart) {
+                    cancelConnectionTool();
+                  }
                 }
+                return;
               } else {
-                console.log('No hit result, canceling connection');
-                // Clicked on empty space, cancel connection
-                if (connectionStart) {
-                  cancelConnectionTool();
+                // Get canvas-relative coordinates for hit testing
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const point = new paper.Point(x, y);
+                // Use Paper.js hit testing to check if we clicked on any item
+                const hitResult = paper.project.hitTest(point);
+                // If no item was hit, or only axes were hit, clear selection
+                if (!hitResult || (hitResult.item && hitResult.item.name === 'axis')) {
+                  setSelectedStock(null);
+                  setEditingStock(null);
                 }
               }
-              return;
-            } else {
-              // Get canvas-relative coordinates for hit testing
-              const rect = e.target.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const y = e.clientY - rect.top;
-              const point = new paper.Point(x, y);
-              // Use Paper.js hit testing to check if we clicked on any item
-              const hitResult = paper.project.hitTest(point);
-              // If no item was hit, or only axes were hit, clear selection
-              if (!hitResult || (hitResult.item && hitResult.item.name === 'axis')) {
-                setSelectedStock(null);
-                setEditingStock(null);
-              }
-            }
-          }}
-        />
-        {renderToolbox()}
-      </div>
-      {jsonEditorVisible && (
-        <div style={{ position: 'absolute', right: 0, top: 0, width: '25%', height: '100%', borderLeft: '1px solid #ccc', display: 'flex', flexDirection: 'column', background: '#fff', zIndex: 2 }}>
-          <Editor
-            height="100%"
-            language="json"
-            value={editorValue}
-            onChange={(value) => {
-              setEditorValue(value);
-              try {
-                const parsedValue = JSON.parse(value);
-                setJsonData(parsedValue);
-              } catch (error) {
-                // Don't update if JSON is invalid
-                console.error('Invalid JSON:', error);
-              }
-            }}
-            options={{
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              fontSize: 14,
-              automaticLayout: true,
-              formatOnPaste: true,
-              formatOnType: true
             }}
           />
+          {renderToolbox()}
         </div>
-      )}
+        {/* Editor pane */}
+        {jsonEditorVisible ? (
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', zIndex: 2 }}>
+            <Editor
+              height="100%"
+              language="json"
+              value={editorValue}
+              onChange={(value) => {
+                setEditorValue(value);
+                try {
+                  const parsedValue = JSON.parse(value);
+                  setJsonData(parsedValue);
+                } catch (error) {
+                  // Don't update if JSON is invalid
+                  console.error('Invalid JSON:', error);
+                }
+              }}
+              options={{
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                fontSize: 14,
+                automaticLayout: true,
+                formatOnPaste: true,
+                formatOnType: true
+              }}
+            />
+          </div>
+        ) : <div />}
+      </SplitPane>
       {/* JSON Editor Toggle Button - Positioned at bottom */}
       <button
         onClick={() => {
+          if (jsonEditorVisible) {
+            setSplitSize('100vw');
+          } else {
+            setSplitSize(window.innerWidth * 0.75);
+          }
           setJsonEditorVisible(prev => !prev);
         }}
         style={{

@@ -602,10 +602,17 @@ const PaperCanvas = () => {
                 const y = e.clientY - rect.top;
                 placeStockAtPosition(x, y);
               } else {
-                // Check if the click was directly on the canvas (not on a stock)
-                // This is determined by checking if the event target is the canvas itself
-                if (e.target === canvasRef.current) {
-                  // Clear selection when clicking on empty canvas area
+                // Get canvas-relative coordinates for hit testing
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const point = new paper.Point(x, y);
+                
+                // Use Paper.js hit testing to check if we clicked on any item
+                const hitResult = paper.project.hitTest(point);
+                
+                // If no item was hit, or only axes were hit, clear selection
+                if (!hitResult || (hitResult.item && hitResult.item.name === 'axis')) {
                   setSelectedStock(null);
                   setEditingStock(null);
                 }

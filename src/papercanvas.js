@@ -367,6 +367,7 @@ const PaperCanvas = () => {
         // Ensure selection is set on drag start
         setSelectedStock(stockData);
         setEditingStock({ ...stockData });
+        setSelectedBoxId(stockData.id);
       };
 
       stockGroup.onMouseDrag = (event) => {
@@ -404,10 +405,12 @@ const PaperCanvas = () => {
           // This was a click, not a drag - handle selection
           setSelectedStock(stockData);
           setEditingStock({ ...stockData });
+          setSelectedBoxId(stockData.id);
         } else {
           // This was a drag - keep selection after drag
           setSelectedStock(stockData);
           setEditingStock({ ...stockData });
+          setSelectedBoxId(stockData.id);
         }
         
         dragStarted = false;
@@ -812,7 +815,7 @@ const PaperCanvas = () => {
         border: '1px solid #ccc',
         borderRadius: '5px',
         boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-        width: toolboxCollapsed ? '40px' : '200px',
+        width: toolboxCollapsed ? '40px' : '300px',
         transition: 'width 0.3s ease',
         overflow: 'hidden'
       }}
@@ -913,6 +916,11 @@ const PaperCanvas = () => {
                   setTempConnectionLine(null);
                 }
               }
+              if (e.target.value !== 'edit') {
+                setSelectedStock(null);
+                setEditingStock(null);
+                setSelectedBoxId(null);
+              }
             }}
             style={{ marginBottom: '10px', width: '100%' }}
           >
@@ -928,14 +936,14 @@ const PaperCanvas = () => {
                 placeholder="Stock Name"
                 value={newStockName}
                 onChange={e => setNewStockName(e.target.value)}
-                style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+                style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
               />
               <input
                 type="number"
                 placeholder="Amount"
                 value={newStockAmount}
                 onChange={e => setNewStockAmount(Number(e.target.value))}
-                style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+                style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
               />
               <button
                 style={{ width: '100%', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
@@ -947,6 +955,68 @@ const PaperCanvas = () => {
                   }
                 }}
               >Add Stock</button>
+            </div>
+          )}
+          {currentMode === 'edit' && (
+            <div style={{ marginTop: '10px' }}>
+              {selectedStock ? (
+                <div>
+                  <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffeaa7' }}>
+                    <strong>Editing: {selectedStock.name}</strong>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Stock Name"
+                    value={editingStock?.name || ''}
+                    onChange={e => setEditingStock({...editingStock, name: e.target.value})}
+                    style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Amount"
+                    value={editingStock?.amount || 0}
+                    onChange={e => setEditingStock({...editingStock, amount: Number(e.target.value)})}
+                    style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
+                  />
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    <button
+                      style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                      onClick={() => {
+                        if (editingStock?.name && editingStock?.amount > 0) {
+                          // Update the JSON data
+                          const updatedJsonData = {
+                            ...jsonData,
+                            boxes: jsonData.boxes.map(box => 
+                              box.id === selectedStock.id 
+                                ? { ...box, name: editingStock.name, amount: editingStock.amount }
+                                : box
+                            )
+                          };
+                          setJsonData(updatedJsonData);
+                          setEditorValue(JSON.stringify(updatedJsonData, null, 2));
+                          setSelectedStock({ ...selectedStock, name: editingStock.name, amount: editingStock.amount });
+                        }
+                      }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      style={{ flex: 1, background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                      onClick={() => {
+                        setSelectedStock(null);
+                        setEditingStock(null);
+                        setSelectedBoxId(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '10px', textAlign: 'center', color: '#6c757d' }}>
+                  Click on a stock to edit it
+                </div>
+              )}
             </div>
           )}
         </div>

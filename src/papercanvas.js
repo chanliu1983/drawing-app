@@ -17,7 +17,7 @@ const PaperCanvas = () => {
   // Toolbox state
   const [toolboxCollapsed, setToolboxCollapsed] = useState(false);
   const [toolboxPosition, setToolboxPosition] = useState({ x: 10, y: 10 });
-  const [selectedMode, setSelectedMode] = useState('normal'); // Dropdown selected mode
+  // Removed selectedMode - using only currentMode for simplicity
   const [newStockName, setNewStockName] = useState('');
   const [newStockAmount, setNewStockAmount] = useState(0);
   const [selectedStock, setSelectedStock] = useState(null); // Track selected stock
@@ -93,13 +93,26 @@ const PaperCanvas = () => {
 
   const createNewConnection = (fromStockId, toStockId) => {
     const maxId = Math.max(0, ...jsonData.connections.map(c => c.id || 0));
+    const fromStockData = jsonData.boxes.find(box => box.id === fromStockId);
+    const toStockData = jsonData.boxes.find(box => box.id === toStockId);
+    const connectionName = fromStockData && toStockData ? `${fromStockData.name} → ${toStockData.name}` : `Connection ${maxId + 1}`;
     const newConnection = {
       id: maxId + 1,
+      name: connectionName,
+      type: "feedback_loop",
       fromStockId: fromStockId,
-      toStockId: toStockId,
-      label: `Connection ${maxId + 1}`
+      toStockId: toStockId
     };
-    
+    // Find the stock groups for visual connection
+    const fromStockGroup = paperState.current.boxes.find(box => box.stockId === fromStockId);
+    const toStockGroup = paperState.current.boxes.find(box => box.stockId === toStockId);
+    if (fromStockGroup && toStockGroup) {
+      // Create visual connection immediately
+      const visualConnection = createConnection(fromStockGroup, toStockGroup, newConnection);
+      paperState.current.connections.push(visualConnection);
+      setConnections(prev => [...prev, visualConnection]);
+      paper.view.draw();
+    }
     setJsonData(prev => ({
       ...prev,
       connections: [...prev.connections, newConnection]
@@ -329,9 +342,7 @@ const PaperCanvas = () => {
 
       stockGroup.onMouseUp = (event) => {
         if (currentMode === 'connect') {
-          // Handle connection logic
-          handleConnectionClick(stockData.id);
-          event.stopPropagation();
+          // Connection logic is now handled by canvas hit testing
           return;
         }
         
@@ -745,8 +756,21 @@ const PaperCanvas = () => {
           <label htmlFor="mode-select" style={{ fontWeight: 'bold', marginRight: '8px' }}>Mode:</label>
           <select
             id="mode-select"
-            value={selectedMode}
-            onChange={e => setSelectedMode(e.target.value)}
+            value={currentMode}
+            onChange={e => {
+              setCurrentMode(e.target.value);
+              // Reset any pending states when changing modes
+              if (e.target.value !== 'add') {
+                setPendingStockData(null);
+              }
+              if (e.target.value !== 'connect') {
+                setConnectionStart(null);
+                if (tempConnectionLine) {
+                  tempConnectionLine.remove();
+                  setTempConnectionLine(null);
+                }
+              }
+            }}
             style={{ marginBottom: '10px', width: '100%' }}
           >
             <option value="normal">Normal</option>
@@ -754,6 +778,34 @@ const PaperCanvas = () => {
             <option value="connect">Connect</option>
             <option value="edit">Edit</option>
           </select>
+          {currentMode === 'add' && (
+            <div style={{ marginTop: '10px' }}>
+              <input
+                type="text"
+                placeholder="Stock Name"
+                value={newStockName}
+                onChange={e => setNewStockName(e.target.value)}
+                style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+              />
+              <input
+                type="number"
+                placeholder="Amount"
+                value={newStockAmount}
+                onChange={e => setNewStockAmount(Number(e.target.value))}
+                style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+              />
+              <button
+                style={{ width: '100%', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                onClick={() => {
+                  if (newStockName && newStockAmount > 0) {
+                    addBoxWithNameAndAmount(newStockName, newStockAmount);
+                    setNewStockName('');
+                    setNewStockAmount(0);
+                  }
+                }}
+              >Add Stock</button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -834,9 +886,36 @@ const PaperCanvas = () => {
               const y = e.clientY - rect.top;
               placeStockAtPosition(x, y);
             } else if (currentMode === 'connect') {
-              // Cancel connection if clicking on empty space
-              if (connectionStart) {
-                cancelConnectionTool();
+              // Get canvas-relative coordinates for hit testing
+              const rect = e.target.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              const point = new paper.Point(x, y);
+              
+              // Use Paper.js hit testing to find clicked stock
+              const hitResult = paper.project.hitTest(point);
+              
+              if (hitResult && hitResult.item) {
+                // Find the stock group that contains this item
+                let stockGroup = hitResult.item;
+                while (stockGroup && !stockGroup.stockId) {
+                  stockGroup = stockGroup.parent;
+                }
+                
+                if (stockGroup && stockGroup.stockId) {
+                  // Found a stock, handle connection logic
+                  handleConnectionClick(stockGroup.stockId);
+                } else {
+                  // Clicked on empty space or non-stock item, cancel connection
+                  if (connectionStart) {
+                    cancelConnectionTool();
+                  }
+                }
+              } else {
+                // Clicked on empty space, cancel connection
+                if (connectionStart) {
+                  cancelConnectionTool();
+                }
               }
               return;
             } else {

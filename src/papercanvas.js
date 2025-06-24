@@ -2,7 +2,8 @@ import React, { useRef, useState, useEffect } from 'react';
 import paper from 'paper';
 import SplitPane from 'react-split-pane';
 import Editor from '@monaco-editor/react';
-import initialData from './initialDataLoader';
+// Removed initialData import - now loading from database
+import dbService from './dbService';
 
 
 const PaperCanvas = () => {
@@ -10,8 +11,8 @@ const PaperCanvas = () => {
   const resizeCanvasRef = useRef(null);
   const [boxes, setBoxes] = useState([]);
   const [connections, setConnections] = useState([]);
-  const [jsonData, setJsonData] = useState(initialData);
-  const [editorValue, setEditorValue] = useState(JSON.stringify(initialData, null, 2));
+  const [jsonData, setJsonData] = useState({ boxes: [], connections: [] });
+  const [editorValue, setEditorValue] = useState(JSON.stringify({ boxes: [], connections: [] }, null, 2));
   
   // Toolbox state
   const [toolboxCollapsed, setToolboxCollapsed] = useState(false);
@@ -24,6 +25,12 @@ const PaperCanvas = () => {
   const [selectedBoxId, setSelectedBoxId] = useState(null); // Track selected box
   const [jsonEditorVisible, setJsonEditorVisible] = useState(true); // Control JSON editor visibility
   const [splitSize, setSplitSize] = useState('70%'); // Control split pane size
+  
+  // Canvas management state
+  const [availableCanvases, setAvailableCanvases] = useState([]);
+  const [currentCanvasName, setCurrentCanvasName] = useState('default');
+  const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
+  const [newCanvasName, setNewCanvasName] = useState('');
 
   const paperState = useRef({
     boxes: [],
@@ -83,14 +90,10 @@ const PaperCanvas = () => {
     } else {
       // Complete the connection
       console.log('Attempting to complete connection from', connectionStart, 'to', stockId);
-      if (connectionStart !== stockId) {
-        console.log('Creating new connection');
-        createNewConnection(connectionStart, stockId);
-        // Switch back to normal mode after creating connection
-        setCurrentMode('normal');
-      } else {
-        console.log('Same stock clicked, not creating connection');
-      }
+      console.log('Creating new connection (including self-connections)');
+      createNewConnection(connectionStart, stockId);
+      // Switch back to normal mode after creating connection
+      setCurrentMode('normal');
       // Reset connection state
       console.log('Resetting connection state');
       setConnectionStart(null);
@@ -142,8 +145,111 @@ const PaperCanvas = () => {
     }
   };
 
+  // Canvas management functions
+  const loadAvailableCanvases = async () => {
+    try {
+      const canvasNames = await dbService.getAllCanvasNames();
+      setAvailableCanvases(canvasNames);
+    } catch (error) {
+      console.error('Failed to load available canvases:', error);
+    }
+  };
+
+  const saveCurrentCanvas = async (name = currentCanvasName) => {
+    console.log('Save button clicked! Current canvas name:', name);
+    console.log('Current jsonData:', jsonData);
+    try {
+      await dbService.saveCanvas(name, jsonData);
+      console.log(`Canvas '${name}' saved successfully`);
+      alert(`Canvas '${name}' saved successfully!`);
+      if (!availableCanvases.includes(name)) {
+        setAvailableCanvases(prev => [...prev, name].sort());
+      }
+    } catch (error) {
+      console.error('Failed to save canvas:', error);
+      alert('Failed to save canvas. Please try again.');
+    }
+  };
+
+  const loadCanvas = async (name) => {
+    try {
+      const canvasData = await dbService.loadCanvas(name);
+      if (canvasData) {
+        setJsonData(canvasData);
+        setEditorValue(JSON.stringify(canvasData, null, 2));
+        setCurrentCanvasName(name);
+        console.log(`Canvas '${name}' loaded successfully`);
+      } else {
+        console.log(`Canvas '${name}' not found`);
+      }
+    } catch (error) {
+      console.error('Failed to load canvas:', error);
+      alert('Failed to load canvas. Please try again.');
+    }
+  };
+
+  const createNewCanvas = async (name) => {
+    if (!name.trim()) {
+      alert('Please enter a canvas name');
+      return;
+    }
+    
+    if (await dbService.canvasExists(name)) {
+      alert('A canvas with this name already exists');
+      return;
+    }
+
+    const newCanvasData = {
+      boxes: [],
+      connections: []
+    };
+    
+    try {
+      await dbService.saveCanvas(name, newCanvasData);
+      setJsonData(newCanvasData);
+      setEditorValue(JSON.stringify(newCanvasData, null, 2));
+      setCurrentCanvasName(name);
+      setAvailableCanvases(prev => [...prev, name].sort());
+      setShowNewCanvasDialog(false);
+      setNewCanvasName('');
+      console.log(`New canvas '${name}' created successfully`);
+    } catch (error) {
+      console.error('Failed to create new canvas:', error);
+      alert('Failed to create new canvas. Please try again.');
+    }
+  };
+
+  const handleCanvasSelection = (selectedValue) => {
+    if (selectedValue === 'new_canvas') {
+      setShowNewCanvasDialog(true);
+    } else {
+      loadCanvas(selectedValue);
+    }
+  };
+
   // This ref will track if Paper.js has been initialized
   const paperInitialized = useRef(false);
+
+  // Initialize database and load available canvases
+  useEffect(() => {
+    const initializeDatabase = async () => {
+      try {
+        await dbService.init();
+        await loadAvailableCanvases();
+        
+        // Save the default canvas if it doesn't exist
+        if (!(await dbService.canvasExists('default'))) {
+          const defaultData = { boxes: [], connections: [] };
+          await dbService.saveCanvas('default', defaultData);
+          setAvailableCanvases(prev => ['default', ...prev].sort());
+        }
+      } catch (error) {
+        console.error('Failed to initialize database:', error);
+      }
+    };
+    
+    initializeDatabase();
+  }, []);
 
   useEffect(() => {
     if (!canvasRef.current) {
@@ -601,10 +707,86 @@ const PaperCanvas = () => {
     return edgePoint;
   };
 
+  const createSelfConnection = (box, connectionData = null) => {
+    console.log('=== CREATING SELF CONNECTION ===');
+    console.log('Box:', box.stockId, 'position:', box.position);
+    
+    const boxBounds = box.bounds;
+    const boxCenter = box.position;
+    const loopRadius = 50; // Radius of the self-connection loop
+    const arrowSize = 8;
+    
+    // Position the loop on the right side of the box
+    const startPoint = new paper.Point(boxBounds.right, boxCenter.y);
+    const endPoint = new paper.Point(boxBounds.right, boxCenter.y - 5); // Slightly offset for arrow
+    
+    // Create control points for a circular loop
+    const controlOffset = loopRadius;
+    const control1 = new paper.Point(boxBounds.right + controlOffset, boxCenter.y - controlOffset);
+    const control2 = new paper.Point(boxBounds.right + controlOffset, boxCenter.y + controlOffset);
+    
+    // Create the curved path
+    const path = new paper.Path({
+      strokeColor: 'black',
+      strokeWidth: 2
+    });
+    
+    path.moveTo(startPoint);
+    path.cubicCurveTo(control1, control2, endPoint);
+    
+    // Create arrow at the end point
+    const arrowDirection = new paper.Point(-1, 0); // Pointing left into the box
+    const perpendicular = new paper.Point(0, -1); // Perpendicular for arrow wings
+    
+    const arrowTip = endPoint;
+    const arrowBase = arrowTip.subtract(arrowDirection.multiply(arrowSize));
+    const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
+    const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
+    
+    const arrowHead = new paper.Path({
+      segments: [arrowTip, arrowLeft, arrowRight],
+      strokeColor: 'black',
+      strokeWidth: 2,
+      fillColor: 'black',
+      closed: true
+    });
+    
+    // Add connection name label if provided
+    let nameLabel = null;
+    if (connectionData && connectionData.name) {
+      const labelPosition = new paper.Point(boxBounds.right + loopRadius, boxCenter.y);
+      nameLabel = new paper.PointText({
+        point: labelPosition,
+        content: connectionData.name,
+        fillColor: 'black',
+        fontSize: 12,
+        justification: 'center'
+      });
+    }
+    
+    const connectionGroup = nameLabel ? 
+      new paper.Group([path, arrowHead, nameLabel]) : 
+      new paper.Group([path, arrowHead]);
+    
+    if (connectionData) {
+      connectionGroup.connectionData = connectionData;
+    }
+    
+    return connectionGroup;
+  };
+
   const createConnection = (box1, box2, connectionData = null) => {
     console.log('=== CREATING CONNECTION ===');
     console.log('From box (box1):', box1.stockId, 'position:', box1.position);
     console.log('To box (box2):', box2.stockId, 'position:', box2.position);
+    
+    // Check if this is a self-connection
+    const isSelfConnection = box1.stockId === box2.stockId;
+    console.log('Is self-connection:', isSelfConnection);
+    
+    if (isSelfConnection) {
+      return createSelfConnection(box1, connectionData);
+    }
     
     const end = getEdgePoint(box1, box2); // from box1 (from) to box2 (to)
     const start = getEdgePoint(box2, box1);   // to box2 (to) from box1 (from)
@@ -752,6 +934,58 @@ const PaperCanvas = () => {
       const fromBox = paperState.current.boxes.find(b => b.stockId === connData.fromStockId);
       const toBox = paperState.current.boxes.find(b => b.stockId === connData.toStockId);
       if (!fromBox || !toBox) return;
+      
+      // Check if this is a self-connection
+      if (connData.fromStockId === connData.toStockId) {
+        // Only update self-connection if the dragged box is the same as the self-connection's box
+        if (draggedBox.stockId !== connData.fromStockId) {
+          return; // Skip updating this self-connection if it's not the dragged box
+        }
+        
+        // For self-connections, update the position but keep the same relative structure
+        const boxBounds = fromBox.bounds;
+        const boxCenter = fromBox.position;
+        const loopRadius = 50;
+        
+        // Update the self-connection position
+        const startPoint = new paper.Point(boxBounds.right, boxCenter.y);
+        const endPoint = new paper.Point(boxBounds.right, boxCenter.y - 5);
+        const controlOffset = loopRadius;
+        const control1 = new paper.Point(boxBounds.right + controlOffset, boxCenter.y - controlOffset);
+        const control2 = new paper.Point(boxBounds.right + controlOffset, boxCenter.y + controlOffset);
+        
+        const path = connection.children[0];
+        if (path && path.segments) {
+          path.segments[0].point = startPoint;
+          path.segments[1].point = endPoint;
+          path.segments[0].handleOut = control1.subtract(startPoint);
+          path.segments[1].handleIn = control2.subtract(endPoint);
+        }
+        
+        // Update arrow position for self-connection
+        const arrowHead = connection.children[1];
+        if (arrowHead && arrowHead.segments) {
+          const arrowSize = 8;
+          const arrowDirection = new paper.Point(-1, 0);
+          const perpendicular = new paper.Point(0, -1);
+          const arrowTip = endPoint;
+          const arrowBase = arrowTip.subtract(arrowDirection.multiply(arrowSize));
+          const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
+          const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
+          
+          arrowHead.segments[0].point = arrowTip;
+          arrowHead.segments[1].point = arrowLeft;
+          arrowHead.segments[2].point = arrowRight;
+        }
+        
+        // Update name label position if it exists
+        if (connection.children[2]) {
+          const labelPosition = new paper.Point(boxBounds.right + loopRadius, boxCenter.y);
+          connection.children[2].position = labelPosition;
+        }
+        
+        return; // Skip regular connection logic for self-connections
+      }
       
       console.log('=== UPDATING CONNECTION DURING DRAG ===');
       console.log('Connection', i, 'from:', connData.fromStockId, 'to:', connData.toStockId);
@@ -1297,6 +1531,139 @@ const PaperCanvas = () => {
       >
         {jsonEditorVisible ? '📝 Hide Editor' : '📝 Show Editor'}
       </button>
+      
+      {/* Canvas Selection Dropdown */}
+      <div style={{
+        position: 'fixed',
+        bottom: '20px',
+        left: '20px',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}>
+        <label style={{
+          color: '#333',
+          fontSize: '14px',
+          fontWeight: 'bold'
+        }}>Canvas:</label>
+        <select
+          value={currentCanvasName}
+          onChange={(e) => handleCanvasSelection(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            fontSize: '14px',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            backgroundColor: 'white',
+            cursor: 'pointer',
+            minWidth: '150px'
+          }}
+        >
+          {availableCanvases.map(name => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+          <option value="new_canvas">+ New Canvas</option>
+        </select>
+        <button
+          onClick={() => saveCurrentCanvas()}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: '#2196F3',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          }}
+          title="Save current canvas"
+        >
+          💾 Save
+        </button>
+      </div>
+      
+      {/* New Canvas Dialog */}
+      {showNewCanvasDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '20px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            minWidth: '300px'
+          }}>
+            <h3 style={{ margin: '0 0 15px 0' }}>Create New Canvas</h3>
+            <input
+              type="text"
+              placeholder="Enter canvas name"
+              value={newCanvasName}
+              onChange={(e) => setNewCanvasName(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  createNewCanvas(newCanvasName);
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '10px',
+                fontSize: '14px',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                marginBottom: '15px',
+                boxSizing: 'border-box'
+              }}
+              autoFocus
+            />
+            <div style={{
+              display: 'flex',
+              gap: '10px',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => {
+                  setShowNewCanvasDialog(false);
+                  setNewCanvasName('');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#ccc',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => createNewCanvas(newCanvasName)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#4CAF50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

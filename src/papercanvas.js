@@ -74,15 +74,25 @@ const PaperCanvas = () => {
 
   // Connection tool functions
   const handleConnectionClick = (stockId) => {
+    console.log('handleConnectionClick called with stockId:', stockId);
+    console.log('Current connectionStart:', connectionStart);
     if (!connectionStart) {
       // Start a new connection
+      console.log('Starting new connection with stockId:', stockId);
       setConnectionStart(stockId);
     } else {
       // Complete the connection
+      console.log('Attempting to complete connection from', connectionStart, 'to', stockId);
       if (connectionStart !== stockId) {
+        console.log('Creating new connection');
         createNewConnection(connectionStart, stockId);
+        // Switch back to normal mode after creating connection
+        setCurrentMode('normal');
+      } else {
+        console.log('Same stock clicked, not creating connection');
       }
       // Reset connection state
+      console.log('Resetting connection state');
       setConnectionStart(null);
       if (tempConnectionLine) {
         tempConnectionLine.remove();
@@ -113,10 +123,14 @@ const PaperCanvas = () => {
       setConnections(prev => [...prev, visualConnection]);
       paper.view.draw();
     }
+    // Update jsonData without triggering box recreation
     setJsonData(prev => ({
       ...prev,
       connections: [...prev.connections, newConnection]
     }));
+    
+    // Force a re-render to update the JSON editor
+    paper.view.draw();
   };
 
   const cancelConnectionTool = () => {
@@ -315,7 +329,12 @@ const PaperCanvas = () => {
       let offset = new paper.Point();
 
       stockGroup.onMouseDown = (event) => {
-        if (currentMode === 'connect') {
+        // Use a function to get current mode to avoid closure issues
+        const getCurrentMode = () => {
+          const modeSelect = document.querySelector('select[value]');
+          return modeSelect ? modeSelect.value : 'normal';
+        };
+        if (getCurrentMode() === 'connect') {
           // Disable dragging in connect mode
           return;
         }
@@ -328,7 +347,12 @@ const PaperCanvas = () => {
       };
 
       stockGroup.onMouseDrag = (event) => {
-        if (currentMode === 'connect') {
+        // Use a function to get current mode to avoid closure issues
+        const getCurrentMode = () => {
+          const modeSelect = document.querySelector('select[value]');
+          return modeSelect ? modeSelect.value : 'normal';
+        };
+        if (getCurrentMode() === 'connect') {
           // Disable dragging in connect mode
           return;
         }
@@ -341,7 +365,12 @@ const PaperCanvas = () => {
       };
 
       stockGroup.onMouseUp = (event) => {
-        if (currentMode === 'connect') {
+        // Use a function to get current mode to avoid closure issues
+        const getCurrentMode = () => {
+          const modeSelect = document.querySelector('select[value]');
+          return modeSelect ? modeSelect.value : 'normal';
+        };
+        if (getCurrentMode() === 'connect') {
           // Connection logic is now handled by canvas hit testing
           return;
         }
@@ -385,7 +414,36 @@ const PaperCanvas = () => {
     // Redraw axes and view
     drawAxes();
     paper.view.draw();
-  }, [jsonData, selectedBoxId]);
+  }, [jsonData?.boxes, selectedBoxId]);
+
+  // Handle connections changes separately to avoid recreating boxes
+  useEffect(() => {
+    if (!jsonData || !jsonData.connections || !paperState.current.boxes) return;
+    
+    // Remove existing connections
+    paperState.current.connections.forEach(conn => {
+      if (conn && conn.remove) {
+        conn.remove();
+      }
+    });
+    paperState.current.connections = [];
+    
+    // Recreate connections
+    const newConnections = [];
+    jsonData.connections.forEach((connData) => {
+      const fromStock = paperState.current.boxes.find(box => box.stockId === connData.fromStockId);
+      const toStock = paperState.current.boxes.find(box => box.stockId === connData.toStockId);
+      if (fromStock && toStock) {
+        // Always use fromStock as the first argument, toStock as the second
+        const connection = createConnection(fromStock, toStock, connData);
+        newConnections.push(connection);
+      }
+    });
+    
+    paperState.current.connections = newConnections;
+    setConnections(newConnections);
+    paper.view.draw();
+  }, [jsonData?.connections]);
 
   // Keep editor value in sync with jsonData
   useEffect(() => {
@@ -500,11 +558,30 @@ const PaperCanvas = () => {
   };
 
   const createConnection = (box1, box2, connectionData = null) => {
-    console.log('Creating connection');
+    console.log('=== CREATING CONNECTION ===');
+    console.log('From box (box1):', box1.stockId, 'position:', box1.position);
+    console.log('To box (box2):', box2.stockId, 'position:', box2.position);
+    
     const start = getEdgePoint(box1, box2); // from box1 (from) to box2 (to)
     const end = getEdgePoint(box2, box1);   // to box2 (to) from box1 (from)
+    console.log('Start point (from):', start.x, start.y);
+    console.log('End point (to):', end.x, end.y);
+    
     const arrowSize = 8;
-    const direction = end.subtract(start).normalize();
+    // Calculate direction and snap to nearest axis (horizontal or vertical only)
+    const rawDirection = end.subtract(start);
+    console.log('Raw direction vector:', rawDirection.x, rawDirection.y);
+    
+    let direction;
+    if (Math.abs(rawDirection.x) > Math.abs(rawDirection.y)) {
+      // Horizontal direction
+      direction = new paper.Point(rawDirection.x > 0 ? 1 : -1, 0);
+      console.log('Arrow direction: HORIZONTAL', direction.x > 0 ? 'RIGHT' : 'LEFT');
+    } else {
+      // Vertical direction
+      direction = new paper.Point(0, rawDirection.y > 0 ? 1 : -1);
+      console.log('Arrow direction: VERTICAL', direction.y > 0 ? 'DOWN' : 'UP');
+    }
     const perpendicular = new paper.Point(-direction.y, direction.x);
     // Calculate the base of the arrowhead
     const arrowBase = end.subtract(direction.multiply(arrowSize));
@@ -622,12 +699,36 @@ const PaperCanvas = () => {
       const fromBox = paperState.current.boxes.find(b => b.stockId === connData.fromStockId);
       const toBox = paperState.current.boxes.find(b => b.stockId === connData.toStockId);
       if (!fromBox || !toBox) return;
+      
+      console.log('=== UPDATING CONNECTION DURING DRAG ===');
+      console.log('Connection', i, 'from:', connData.fromStockId, 'to:', connData.toStockId);
+      console.log('From box position:', fromBox.position);
+      console.log('To box position:', toBox.position);
+      
+      // Ensure direction is consistent with connection data: from -> to
       const start = getEdgePoint(fromBox, toBox);
       const end = getEdgePoint(toBox, fromBox);
+      console.log('Updated start point (from):', start.x, start.y);
+      console.log('Updated end point (to):', end.x, end.y);
+      
       const arrowSize = 8;
-      const direction = end.subtract(start).normalize();
+      // Calculate direction and snap to nearest axis (horizontal or vertical only)
+      const rawDirection = end.subtract(start);
+      console.log('Updated raw direction vector:', rawDirection.x, rawDirection.y);
+      
+      let direction;
+      if (Math.abs(rawDirection.x) > Math.abs(rawDirection.y)) {
+        // Horizontal direction
+        direction = new paper.Point(rawDirection.x > 0 ? 1 : -1, 0);
+        console.log('Updated arrow direction: HORIZONTAL', direction.x > 0 ? 'RIGHT' : 'LEFT');
+      } else {
+        // Vertical direction
+        direction = new paper.Point(0, rawDirection.y > 0 ? 1 : -1);
+        console.log('Updated arrow direction: VERTICAL', direction.y > 0 ? 'DOWN' : 'UP');
+      }
       const perpendicular = new paper.Point(-direction.y, direction.x);
       const arrowBase = end.subtract(direction.multiply(arrowSize));
+      // Ensure arrow points in correct direction: from -> to
       const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
       const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
       // The curve should end at the base of the arrow, not the box
@@ -640,10 +741,11 @@ const PaperCanvas = () => {
         path.segments[0].handleOut = handle1.subtract(start);
         path.segments[1].handleIn = handle2.subtract(arrowBase);
       }
-      // Arrow always on 'to' side
+      // Arrow always on 'to' side - maintain same segment order as creation
       const arrowHead = connection.children[1];
       if (arrowHead && arrowHead.segments) {
-        arrowHead.segments[0].point = end;
+        // Match the creation order: [arrowTip, arrowLeft, arrowRight]
+        arrowHead.segments[0].point = end;  // arrowTip
         arrowHead.segments[1].point = arrowLeft;
         arrowHead.segments[2].point = arrowRight;
       }
@@ -896,22 +998,81 @@ const PaperCanvas = () => {
               const hitResult = paper.project.hitTest(point);
               
               if (hitResult && hitResult.item) {
-                // Find the stock group that contains this item
-                let stockGroup = hitResult.item;
-                while (stockGroup && !stockGroup.stockId) {
-                  stockGroup = stockGroup.parent;
+                console.log('Hit test result:', hitResult.item);
+                
+                // Try to find a stock by checking all boxes
+                const clickedPoint = new paper.Point(x, y);
+                console.log('Click coordinates:', x, y);
+                let foundStock = null;
+                
+                // Check if the click is within any stock box bounds
+                for (const box of paperState.current.boxes) {
+                  console.log('Checking box', box.stockId, 'bounds:', box.bounds.toString(), 'contains click:', box.bounds.contains(clickedPoint));
+                  if (box.bounds.contains(clickedPoint)) {
+                    console.log('Found box containing click point:', box.stockId);
+                    foundStock = box;
+                    break;
+                  }
                 }
                 
-                if (stockGroup && stockGroup.stockId) {
+                if (foundStock) {
+                  console.log('Found stock with ID:', foundStock.stockId);
                   // Found a stock, handle connection logic
-                  handleConnectionClick(stockGroup.stockId);
+                  handleConnectionClick(foundStock.stockId);
                 } else {
-                  // Clicked on empty space or non-stock item, cancel connection
-                  if (connectionStart) {
-                    cancelConnectionTool();
+                  // Try the original parent traversal method as fallback
+                  let stockGroup = hitResult.item;
+                  console.log('Starting parent traversal from:', stockGroup);
+                  
+                  // First try to find by stockId
+                  while (stockGroup && !stockGroup.stockId) {
+                    console.log('Traversing parent:', stockGroup.parent);
+                    stockGroup = stockGroup.parent;
+                  }
+                  
+                  if (stockGroup && stockGroup.stockId) {
+                    console.log('Found stock with ID (via parent traversal):', stockGroup.stockId);
+                    // Found a stock, handle connection logic
+                    handleConnectionClick(stockGroup.stockId);
+                  } else {
+                    // If stockId not found, try to find by checking all boxes
+                    console.log('No stockId found, checking all boxes');
+                    let foundBox = null;
+                    
+                    for (const box of paperState.current.boxes) {
+                      // Check if the hit result item is a child of this box
+                      let isChild = false;
+                      let currentItem = hitResult.item;
+                      
+                      while (currentItem && !isChild) {
+                        if (currentItem === box || currentItem.parent === box) {
+                          isChild = true;
+                          break;
+                        }
+                        currentItem = currentItem.parent;
+                      }
+                      
+                      if (isChild) {
+                        console.log('Found box containing hit item:', box.stockId);
+                        foundBox = box;
+                        break;
+                      }
+                    }
+                    
+                    if (foundBox) {
+                      console.log('Found stock with ID (via box search):', foundBox.stockId);
+                      handleConnectionClick(foundBox.stockId);
+                    } else {
+                      console.log('No stock group found, canceling connection');
+                      // Clicked on empty space or non-stock item, cancel connection
+                      if (connectionStart) {
+                        cancelConnectionTool();
+                      }
+                    }
                   }
                 }
               } else {
+                console.log('No hit result, canceling connection');
                 // Clicked on empty space, cancel connection
                 if (connectionStart) {
                   cancelConnectionTool();

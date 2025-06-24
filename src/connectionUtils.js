@@ -26,7 +26,16 @@ export const createConnection = (box1, box2, connectionData, paper, getEdgePoint
   const start = getEdgePoint(box1, box2, paper);
   const end = getEdgePoint(box2, box1, paper);
   const arrowSize = 8;
-  const direction = end.subtract(start).normalize();
+  // Snap direction to nearest axis (horizontal or vertical only)
+  const rawDirection = end.subtract(start);
+  let direction;
+  if (Math.abs(rawDirection.x) > Math.abs(rawDirection.y)) {
+    // Horizontal direction
+    direction = new paper.Point(rawDirection.x > 0 ? 1 : -1, 0);
+  } else {
+    // Vertical direction
+    direction = new paper.Point(0, rawDirection.y > 0 ? 1 : -1);
+  }
   const perpendicular = new paper.Point(-direction.y, direction.x);
   const arrowBase = end.subtract(direction.multiply(arrowSize));
   const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));

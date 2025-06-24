@@ -1228,7 +1228,7 @@ const PaperCanvas = () => {
                     onChange={e => setEditingStock({...editingStock, amount: Number(e.target.value)})}
                     style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
                   />
-                  <div style={{ display: 'flex', gap: '5px' }}>
+                  <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
                     <button
                       style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
                       onClick={() => {
@@ -1261,6 +1261,26 @@ const PaperCanvas = () => {
                       Cancel
                     </button>
                   </div>
+                  <button
+                    style={{ width: '100%', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                    onClick={() => {
+                      if (window.confirm(`Remove stock '${selectedStock.name}' and all its connections?`)) {
+                        // Remove the stock and all its connections
+                        const updatedJsonData = {
+                          ...jsonData,
+                          boxes: jsonData.boxes.filter(box => box.id !== selectedStock.id),
+                          connections: jsonData.connections.filter(conn => conn.fromStockId !== selectedStock.id && conn.toStockId !== selectedStock.id)
+                        };
+                        setJsonData(updatedJsonData);
+                        setEditorValue(JSON.stringify(updatedJsonData, null, 2));
+                        setSelectedStock(null);
+                        setEditingStock(null);
+                        setSelectedBoxId(null);
+                      }
+                    }}
+                  >
+                    Remove Stock
+                  </button>
                 </div>
               ) : (
                 <div style={{ padding: '10px', textAlign: 'center', color: '#6c757d' }}>

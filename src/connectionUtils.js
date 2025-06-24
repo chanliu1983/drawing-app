@@ -23,8 +23,8 @@ export const getEdgePoint = (fromBox, toBox, paper) => {
 };
 
 export const createConnection = (box1, box2, connectionData, paper, getEdgePoint) => {
-  const start = getEdgePoint(box1, box2, paper);
-  const end = getEdgePoint(box2, box1, paper);
+  const end = getEdgePoint(box1, box2, paper);
+  const start = getEdgePoint(box2, box1, paper);
   const arrowSize = 8;
   // Snap direction to nearest axis (horizontal or vertical only)
   const rawDirection = end.subtract(start);

@@ -174,8 +174,8 @@ const PaperCanvas = () => {
         
         if (!fromStock || !toStock) return;
         
-        const start = getEdgePoint(fromStock, toStock);
-        const end = getEdgePoint(toStock, fromStock);
+        const end = getEdgePoint(fromStock, toStock);
+        const start = getEdgePoint(toStock, fromStock);
         const handle1 = new paper.Point((start.x + end.x) / 2, start.y);
         const handle2 = new paper.Point((start.x + end.x) / 2, end.y);
 
@@ -562,8 +562,8 @@ const PaperCanvas = () => {
     console.log('From box (box1):', box1.stockId, 'position:', box1.position);
     console.log('To box (box2):', box2.stockId, 'position:', box2.position);
     
-    const start = getEdgePoint(box1, box2); // from box1 (from) to box2 (to)
-    const end = getEdgePoint(box2, box1);   // to box2 (to) from box1 (from)
+    const end = getEdgePoint(box1, box2); // from box1 (from) to box2 (to)
+    const start = getEdgePoint(box2, box1);   // to box2 (to) from box1 (from)
     console.log('Start point (from):', start.x, start.y);
     console.log('End point (to):', end.x, end.y);
     
@@ -706,8 +706,8 @@ const PaperCanvas = () => {
       console.log('To box position:', toBox.position);
       
       // Ensure direction is consistent with connection data: from -> to
-      const start = getEdgePoint(fromBox, toBox);
-      const end = getEdgePoint(toBox, fromBox);
+      const end = getEdgePoint(fromBox, toBox);
+      const start = getEdgePoint(toBox, fromBox);
       console.log('Updated start point (from):', start.x, start.y);
       console.log('Updated end point (to):', end.x, end.y);
       

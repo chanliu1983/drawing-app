@@ -17,12 +17,13 @@ const PaperCanvas = () => {
   // Toolbox state
   const [toolboxCollapsed, setToolboxCollapsed] = useState(false);
   const [toolboxPosition, setToolboxPosition] = useState({ x: 10, y: 10 });
-  const [showStockForm, setShowStockForm] = useState(false);
+  const [selectedMode, setSelectedMode] = useState('normal'); // Dropdown selected mode
   const [newStockName, setNewStockName] = useState('');
   const [newStockAmount, setNewStockAmount] = useState(0);
   const [selectedStock, setSelectedStock] = useState(null); // Track selected stock
   const [editingStock, setEditingStock] = useState(null); // For editing form
   const [selectedBoxId, setSelectedBoxId] = useState(null); // Track selected box
+  const [jsonEditorVisible, setJsonEditorVisible] = useState(true); // Control JSON editor visibility
 
   const paperState = useRef({
     boxes: [],
@@ -71,13 +72,68 @@ const PaperCanvas = () => {
     yLabel.name = 'axis';
   };
 
+  // Connection tool functions
+  const handleConnectionClick = (stockId) => {
+    if (!connectionStart) {
+      // Start a new connection
+      setConnectionStart(stockId);
+    } else {
+      // Complete the connection
+      if (connectionStart !== stockId) {
+        createNewConnection(connectionStart, stockId);
+      }
+      // Reset connection state
+      setConnectionStart(null);
+      if (tempConnectionLine) {
+        tempConnectionLine.remove();
+        setTempConnectionLine(null);
+      }
+    }
+  };
+
+  const createNewConnection = (fromStockId, toStockId) => {
+    const maxId = Math.max(0, ...jsonData.connections.map(c => c.id || 0));
+    const newConnection = {
+      id: maxId + 1,
+      fromStockId: fromStockId,
+      toStockId: toStockId,
+      label: `Connection ${maxId + 1}`
+    };
+    
+    setJsonData(prev => ({
+      ...prev,
+      connections: [...prev.connections, newConnection]
+    }));
+  };
+
+  const cancelConnectionTool = () => {
+    setCurrentMode('normal');
+    setConnectionStart(null);
+    if (tempConnectionLine) {
+      tempConnectionLine.remove();
+      setTempConnectionLine(null);
+    }
+  };
+
+  // This ref will track if Paper.js has been initialized
+  const paperInitialized = useRef(false);
+
   useEffect(() => {
     if (!canvasRef.current) {
       console.error('Canvas ref is null');
       return;
     }
-
-    paper.setup(canvasRef.current);
+    
+    // Only do the full setup if Paper.js hasn't been initialized yet
+    // This prevents clearing the canvas when toggling the JSON editor
+    if (!paperInitialized.current) {
+      console.log('Initializing Paper.js for the first time');
+      paper.setup(canvasRef.current);
+      paperInitialized.current = true;
+    } else {
+      console.log('Paper.js already initialized, just updating canvas');
+      // If Paper.js is already initialized, just update the view
+    }
 
     const updateConnectionsForResize = () => {
       if (!jsonData || !jsonData.connections) return;
@@ -212,7 +268,7 @@ const PaperCanvas = () => {
     // Create stocks from JSON data
     jsonData.boxes.forEach((stockData, index) => {
       const boxWidth = 80;
-      const boxHeight = 40;
+      const boxHeight = 50; // Increased height to accommodate name and amount
       const x = stockData.position?.x || Math.random() * (paper.view.size.width - boxWidth);
       const y = stockData.position?.y || Math.random() * (paper.view.size.height - boxHeight);
 
@@ -226,9 +282,10 @@ const PaperCanvas = () => {
       });
 
       const stockName = stockData.name || `Stock ${index + 1}`;
+      const stockAmount = stockData.amount || 0;
       const textLabel = new paper.PointText({
-        point: [x, y],
-        content: stockName,
+        point: [x, y - 5], // Offset text position slightly upward for better centering
+        content: `${stockName}\n(${stockAmount})`,
         fillColor: 'black',
         fontSize: 10,
         justification: 'center'
@@ -239,19 +296,18 @@ const PaperCanvas = () => {
       stockGroup.stockId = stockData.id;
       stockGroup.position = new paper.Point(x, y);
 
-      // Add selection logic
-      stockGroup.onClick = (event) => {
-        setSelectedStock(stockData);
-        setEditingStock({ ...stockData });
-        event.stopPropagation();
-      };
-
-      // Add drag functionality
+      // Add mode-based interaction logic
       let isDragging = false;
+      let dragStarted = false;
       let offset = new paper.Point();
 
       stockGroup.onMouseDown = (event) => {
+        if (currentMode === 'connect') {
+          // Disable dragging in connect mode
+          return;
+        }
         isDragging = true;
+        dragStarted = false;
         offset = stockGroup.position.subtract(event.point);
         // Ensure selection is set on drag start
         setSelectedStock(stockData);
@@ -259,19 +315,39 @@ const PaperCanvas = () => {
       };
 
       stockGroup.onMouseDrag = (event) => {
+        if (currentMode === 'connect') {
+          // Disable dragging in connect mode
+          return;
+        }
         if (isDragging) {
+          dragStarted = true;
           stockGroup.position = event.point.add(offset);
           const boxIndex = newBoxes.findIndex(b => b === stockGroup);
           updateConnectionsOnDrag(stockGroup, boxIndex);
         }
       };
 
-      stockGroup.onMouseUp = () => {
-        // Only set isDragging to false, don't clear selection
+      stockGroup.onMouseUp = (event) => {
+        if (currentMode === 'connect') {
+          // Handle connection logic
+          handleConnectionClick(stockData.id);
+          event.stopPropagation();
+          return;
+        }
+        
         isDragging = false;
-        // Keep selection after drag
-        setSelectedStock(stockData);
-        setEditingStock({ ...stockData });
+        
+        if (!dragStarted) {
+          // This was a click, not a drag - handle selection
+          setSelectedStock(stockData);
+          setEditingStock({ ...stockData });
+        } else {
+          // This was a drag - keep selection after drag
+          setSelectedStock(stockData);
+          setEditingStock({ ...stockData });
+        }
+        
+        dragStarted = false;
       };
 
       newBoxes.push(stockGroup);
@@ -304,6 +380,21 @@ const PaperCanvas = () => {
   useEffect(() => {
     setEditorValue(JSON.stringify(jsonData, null, 2));
   }, [jsonData]);
+  
+  // Handle JSON editor visibility changes without clearing canvas
+  useEffect(() => {
+    // This effect runs after the DOM has been updated
+    // We need to make sure the canvas is properly sized after toggling
+    if (resizeCanvasRef.current) {
+      // Use setTimeout to ensure this runs after the DOM update is complete
+      setTimeout(() => {
+        resizeCanvasRef.current();
+        // Redraw the canvas with the current data
+        drawAxes();
+        paper.view.draw();
+      }, 0);
+    }
+  }, [jsonEditorVisible]);
 
   const addBox = () => {
     console.log('Adding box');
@@ -325,14 +416,17 @@ const PaperCanvas = () => {
     }));
   };
   
-  const [pendingStockPlacement, setPendingStockPlacement] = useState(false);
+  // Mode system - only one mode can be active at a time
+  const [currentMode, setCurrentMode] = useState('normal'); // 'normal', 'add', 'edit', 'connect'
   const [pendingStockData, setPendingStockData] = useState(null);
+  const [connectionStart, setConnectionStart] = useState(null);
+  const [tempConnectionLine, setTempConnectionLine] = useState(null);
 
   const addBoxWithNameAndAmount = (name, amount) => {
     console.log(`Preparing to add box with name: ${name}, amount: ${amount}`);
-    // Set pending stock data and enable placement mode
+    // Set pending stock data and enable add mode
     setPendingStockData({ name, amount });
-    setPendingStockPlacement(true);
+    setCurrentMode('add');
     // No alert - we'll use a custom cursor instead
   };
   
@@ -357,9 +451,9 @@ const PaperCanvas = () => {
       boxes: [...prev.boxes, newStock]
     }));
     
-    // Reset pending state
+    // Reset pending state and return to normal mode
     setPendingStockData(null);
-    setPendingStockPlacement(false);
+    setCurrentMode('normal');
   };
   
 
@@ -552,6 +646,119 @@ const PaperCanvas = () => {
     paper.view.draw();
   };
 
+  // Toolbox rendering function
+  const renderToolbox = () => (
+    <div 
+      style={{
+        position: 'absolute',
+        top: toolboxPosition.y,
+        left: toolboxPosition.x,
+        zIndex: 10,
+        backgroundColor: '#f0f0f0',
+        border: '1px solid #ccc',
+        borderRadius: '5px',
+        boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+        width: toolboxCollapsed ? '40px' : '200px',
+        transition: 'width 0.3s ease',
+        overflow: 'hidden'
+      }}
+    >
+      {/* Toolbox header with drag handle and collapse button */}
+      <div 
+        style={{
+          padding: '8px',
+          backgroundColor: currentMode === 'add' ? '#e0ffe0' : currentMode === 'connect' ? '#e0e0ff' : '#e0e0e0',
+          cursor: 'move',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          transition: 'background-color 0.3s ease'
+        }}
+        onMouseDown={(e) => {
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const startLeft = toolboxPosition.x;
+          const startTop = toolboxPosition.y;
+          const onMouseMove = (moveEvent) => {
+            const dx = moveEvent.clientX - startX;
+            const dy = moveEvent.clientY - startY;
+            setToolboxPosition({
+              x: startLeft + dx,
+              y: startTop + dy
+            });
+          };
+          const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+          };
+          document.addEventListener('mousemove', onMouseMove);
+          document.addEventListener('mouseup', onMouseUp);
+        }}
+      >
+        <span>
+          {toolboxCollapsed ? '🧰' : (
+            currentMode === 'add' 
+              ? <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>Click to place: {pendingStockData?.name}</span>
+              : currentMode === 'connect'
+                ? <span style={{ color: '#2196F3', fontWeight: 'bold' }}>Connect Mode: {connectionStart ? 'Select target stock' : 'Select first stock'}</span>
+                : selectedStock
+                  ? <span style={{ color: '#ff6600', fontWeight: 'bold' }}>Selected: {selectedStock.name}</span>
+                  : 'Stock Toolbox'
+          )}
+
+        </span>
+        <div style={{ display: 'flex', gap: '5px' }}>
+          {currentMode === 'add' && !toolboxCollapsed && (
+            <button 
+              onClick={() => {
+                setCurrentMode('normal');
+                setPendingStockData(null);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '16px',
+                color: '#f44336'
+              }}
+              title="Cancel placement"
+            >
+              ✖
+            </button>
+          )}
+          <button 
+            onClick={() => setToolboxCollapsed(!toolboxCollapsed)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '16px'
+            }}
+          >
+            {toolboxCollapsed ? '➕' : '➖'}
+          </button>
+        </div>
+      </div>
+      {/* Toolbox content (copy from your main render) */}
+      {!toolboxCollapsed && (
+        <div style={{ padding: '10px' }}>
+          <label htmlFor="mode-select" style={{ fontWeight: 'bold', marginRight: '8px' }}>Mode:</label>
+          <select
+            id="mode-select"
+            value={selectedMode}
+            onChange={e => setSelectedMode(e.target.value)}
+            style={{ marginBottom: '10px', width: '100%' }}
+          >
+            <option value="normal">Normal</option>
+            <option value="add">Add Stock</option>
+            <option value="connect">Connect</option>
+            <option value="edit">Edit</option>
+          </select>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'fixed', top: 0, left: 0 }}>
       {/* Robust style for SplitPane resizer cursor and pointer events */}
@@ -582,329 +789,76 @@ const PaperCanvas = () => {
           cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='2' ry='2' fill='%234CAF50' fill-opacity='0.7' stroke='%23333' stroke-width='2'/%3E%3Ctext x='16' y='20' font-family='Arial' font-size='12' text-anchor='middle' fill='white'%3ES%3C/text%3E%3C/svg%3E") 16 16, crosshair;
         }
       `}</style>
-      <SplitPane split="vertical" defaultSize="75%" resizerStyle={{backgroundColor: '#ccc', width: '5px'}} onPaneResized={() => resizeCanvasRef.current && resizeCanvasRef.current()}>
-        <div style={{ position: 'relative', height: '100%' }}>
-          <canvas
-            ref={canvasRef}
-            id="myCanvas"
-            resize="true"
-            className={pendingStockPlacement ? 'stock-placement-cursor' : ''}
-            style={{ 
-              display: 'block', 
-              width: '100%', 
-              height: '100%'
-            }}
-            onClick={(e) => {
-              if (pendingStockPlacement && pendingStockData) {
-                // Get canvas-relative coordinates
-                const rect = e.target.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                placeStockAtPosition(x, y);
-              } else {
-                // Get canvas-relative coordinates for hit testing
-                const rect = e.target.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const point = new paper.Point(x, y);
-                
-                // Use Paper.js hit testing to check if we clicked on any item
-                const hitResult = paper.project.hitTest(point);
-                
-                // If no item was hit, or only axes were hit, clear selection
-                if (!hitResult || (hitResult.item && hitResult.item.name === 'axis')) {
-                  setSelectedStock(null);
-                  setEditingStock(null);
-                }
+      {/* Always render the canvas, only toggle the JSON editor */}
+      <div style={{ width: jsonEditorVisible ? '75%' : '100%', height: '100%', position: 'absolute', left: 0, top: 0 }}>
+        <canvas
+          ref={canvasRef}
+          id="myCanvas"
+          resize="true"
+          className={currentMode === 'add' ? 'stock-placement-cursor' : ''}
+          style={{ 
+            display: 'block', 
+            width: '100%', 
+            height: '100%',
+            cursor: currentMode === 'add' ? 'crosshair' : currentMode === 'connect' ? 'crosshair' : 'default'
+          }}
+          onMouseMove={(e) => {
+            if (currentMode === 'connect' && connectionStart && paper.project) {
+              const rect = e.target.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              // Remove existing temp line
+              if (tempConnectionLine) {
+                tempConnectionLine.remove();
               }
-            }}
-          />
-          <div 
-            style={{
-              position: 'absolute',
-              top: toolboxPosition.y,
-              left: toolboxPosition.x,
-              zIndex: 10,
-              backgroundColor: '#f0f0f0',
-              border: '1px solid #ccc',
-              borderRadius: '5px',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-              width: toolboxCollapsed ? '40px' : '200px',
-              transition: 'width 0.3s ease',
-              overflow: 'hidden'
-            }}
-          >
-            {/* Toolbox header with drag handle and collapse button */}
-            <div 
-              style={{
-                padding: '8px',
-                backgroundColor: pendingStockPlacement ? '#e0ffe0' : '#e0e0e0',
-                cursor: 'move',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                transition: 'background-color 0.3s ease'
-              }}
-              onMouseDown={(e) => {
-                const startX = e.clientX;
-                const startY = e.clientY;
-                const startLeft = toolboxPosition.x;
-                const startTop = toolboxPosition.y;
-                
-                const onMouseMove = (moveEvent) => {
-                  const dx = moveEvent.clientX - startX;
-                  const dy = moveEvent.clientY - startY;
-                  setToolboxPosition({
-                    x: startLeft + dx,
-                    y: startTop + dy
-                  });
-                };
-                
-                const onMouseUp = () => {
-                  document.removeEventListener('mousemove', onMouseMove);
-                  document.removeEventListener('mouseup', onMouseUp);
-                };
-                
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-              }}
-            >
-              <span>
-                {toolboxCollapsed ? '🧰' : (
-                  pendingStockPlacement 
-                    ? <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>Click to place: {pendingStockData?.name}</span>
-                    : selectedStock
-                      ? <span style={{ color: '#ff6600', fontWeight: 'bold' }}>Selected: {selectedStock.name}</span>
-                      : 'Stock Toolbox'
-                )}
-              </span>
-              <div style={{ display: 'flex', gap: '5px' }}>
-                {pendingStockPlacement && !toolboxCollapsed && (
-                  <button 
-                    onClick={() => {
-                      setPendingStockPlacement(false);
-                      setPendingStockData(null);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '16px',
-                      color: '#f44336'
-                    }}
-                    title="Cancel placement"
-                  >
-                    ✖
-                  </button>
-                )}
-                <button 
-                  onClick={() => setToolboxCollapsed(!toolboxCollapsed)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '16px'
-                  }}
-                >
-                  {toolboxCollapsed ? '➕' : '➖'}
-                </button>
-              </div>
-            </div>
-            
-            {/* Toolbox content */}
-            {!toolboxCollapsed && (
-              <div style={{ padding: '10px' }}>
-                {selectedStock ? (
-                  // Edit selected stock form
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#ff6600' }}>
-                      Edit Selected Stock
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '4px' }}>Stock Name:</label>
-                      <input 
-                        type="text" 
-                        value={editingStock ? editingStock.name : ''}
-                        onChange={(e) => setEditingStock({ ...editingStock, name: e.target.value })}
-                        style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '4px' }}>Amount:</label>
-                      <input 
-                        type="number" 
-                        value={editingStock ? editingStock.amount : ''}
-                        onChange={(e) => setEditingStock({ ...editingStock, amount: Number(e.target.value) })}
-                        style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                      <button 
-                        onClick={() => {
-                          // Update the selected stock
-                          setJsonData(prev => ({
-                            ...prev,
-                            boxes: prev.boxes.map(box => 
-                              box.id === editingStock.id ? editingStock : box
-                            )
-                          }));
-                          
-                          // Update selected stock state
-                          setSelectedStock(editingStock);
-                          
-                          // Keep the form values as they are (don't reset)
-                          // This allows continued editing of the same stock
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '6px 12px',
-                          backgroundColor: '#ff6600',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Update
-                      </button>
-                      <button 
-                        onClick={() => {
-                          // Deselect the stock only when Cancel is pressed
-                          setSelectedStock(null);
-                          setEditingStock(null);
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '6px 12px',
-                          backgroundColor: '#9e9e9e',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        // Remove the selected stock
-                        setJsonData(prev => ({
-                          ...prev,
-                          boxes: prev.boxes.filter(box => box.id !== selectedStock.id),
-                          connections: prev.connections.filter(
-                            conn => conn.fromStockId !== selectedStock.id && conn.toStockId !== selectedStock.id
-                          )
-                        }));
-                        
-                        // Deselect the stock
-                        setSelectedStock(null);
-                        setEditingStock(null);
-                      }}
-                      style={{
-                        marginTop: '8px',
-                        padding: '6px 12px',
-                        backgroundColor: '#f44336',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Delete Stock
-                    </button>
-                  </div>
-                ) : !showStockForm ? (
-                  // Regular toolbox buttons when no stock is selected
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <button 
-                      onClick={() => setShowStockForm(true)}
-                      disabled={pendingStockPlacement}
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor: pendingStockPlacement ? '#cccccc' : '#4CAF50',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: pendingStockPlacement ? 'not-allowed' : 'pointer',
-                        opacity: pendingStockPlacement ? 0.7 : 1
-                      }}
-                    >
-                      Add Stock
-                    </button>
-                    
-                  </div>
-                ) : (
-                  // Add new stock form
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '4px' }}>Stock Name:</label>
-                      <input 
-                        type="text" 
-                        value={newStockName}
-                        onChange={(e) => setNewStockName(e.target.value)}
-                        style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '4px' }}>Initial Amount:</label>
-                      <input 
-                        type="number" 
-                        value={newStockAmount}
-                        onChange={(e) => setNewStockAmount(Number(e.target.value))}
-                        style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                      <button 
-                        onClick={() => {
-                          if (newStockName.trim()) {
-                            // Call modified addBox with name and amount
-                            addBoxWithNameAndAmount(newStockName, newStockAmount);
-                            // Reset form
-                            setNewStockName('');
-                            setNewStockAmount(0);
-                            setShowStockForm(false);
-                          }
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '6px 12px',
-                          backgroundColor: '#4CAF50',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Add
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setNewStockName('');
-                          setNewStockAmount(0);
-                          setShowStockForm(false);
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '6px 12px',
-                          backgroundColor: '#9e9e9e',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-        <div style={{ height: '100%', borderLeft: '1px solid #ccc', display: 'flex', flexDirection: 'column', flex: 1 }}>
+              // Find the starting stock position
+              const startStock = boxes.find(box => box.stockId === connectionStart);
+              if (startStock) {
+                const tempLine = new paper.Path.Line(
+                  startStock.position,
+                  new paper.Point(x, y)
+                );
+                tempLine.strokeColor = 'red';
+                tempLine.strokeWidth = 2;
+                tempLine.dashArray = [5, 5];
+                setTempConnectionLine(tempLine);
+                paper.view.draw();
+              }
+            }
+          }}
+          onClick={(e) => {
+            if (currentMode === 'add' && pendingStockData) {
+              // Get canvas-relative coordinates
+              const rect = e.target.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              placeStockAtPosition(x, y);
+            } else if (currentMode === 'connect') {
+              // Cancel connection if clicking on empty space
+              if (connectionStart) {
+                cancelConnectionTool();
+              }
+              return;
+            } else {
+              // Get canvas-relative coordinates for hit testing
+              const rect = e.target.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              const point = new paper.Point(x, y);
+              // Use Paper.js hit testing to check if we clicked on any item
+              const hitResult = paper.project.hitTest(point);
+              // If no item was hit, or only axes were hit, clear selection
+              if (!hitResult || (hitResult.item && hitResult.item.name === 'axis')) {
+                setSelectedStock(null);
+                setEditingStock(null);
+              }
+            }
+          }}
+        />
+        {renderToolbox()}
+      </div>
+      {jsonEditorVisible && (
+        <div style={{ position: 'absolute', right: 0, top: 0, width: '25%', height: '100%', borderLeft: '1px solid #ccc', display: 'flex', flexDirection: 'column', background: '#fff', zIndex: 2 }}>
           <Editor
             height="100%"
             language="json"
@@ -929,7 +883,31 @@ const PaperCanvas = () => {
             }}
           />
         </div>
-      </SplitPane>
+      )}
+      {/* JSON Editor Toggle Button - Positioned at bottom */}
+      <button
+        onClick={() => {
+          setJsonEditorVisible(prev => !prev);
+        }}
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          zIndex: 1000,
+          padding: '10px 15px',
+          backgroundColor: jsonEditorVisible ? '#ff6600' : '#4CAF50',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
+        title={jsonEditorVisible ? 'Hide JSON Editor' : 'Show JSON Editor'}
+      >
+        {jsonEditorVisible ? '📝 Hide Editor' : '📝 Show Editor'}
+      </button>
     </div>
   );
 };

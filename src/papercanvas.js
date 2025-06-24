@@ -235,8 +235,26 @@ const PaperCanvas = () => {
       if (oldHeight !== null) {
         const deltaY = newHeight - oldHeight;
         if (deltaY !== 0) {
+          // Update Paper.js objects only - avoid triggering useEffect re-render
           paperState.current.boxes.forEach(box => {
             box.position.y += deltaY;
+          });
+          // Also update jsonData.boxes positions to match Paper.js box positions
+          setJsonData(prev => {
+            const newBoxes = prev.boxes.map(box => {
+              const paperBox = paperState.current.boxes.find(pb => pb.stockId === box.id);
+              if (paperBox) {
+                return {
+                  ...box,
+                  position: {
+                    x: Math.round(paperBox.position.x),
+                    y: Math.round(paperBox.position.y)
+                  }
+                };
+              }
+              return box;
+            });
+            return { ...prev, boxes: newBoxes };
           });
         }
       }

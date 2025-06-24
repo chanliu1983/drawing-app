@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import paper from 'paper';
-import ReactJson from 'react-json-view';
 import SplitPane from 'react-split-pane';
+import Editor from '@monaco-editor/react';
 import initialData from './initialDataLoader';
 
 
@@ -12,6 +12,17 @@ const PaperCanvas = () => {
   const [connections, setConnections] = useState([]);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const [jsonData, setJsonData] = useState(initialData);
+  const [editorValue, setEditorValue] = useState(JSON.stringify(initialData, null, 2));
+  
+  // Toolbox state
+  const [toolboxCollapsed, setToolboxCollapsed] = useState(false);
+  const [toolboxPosition, setToolboxPosition] = useState({ x: 10, y: 10 });
+  const [showStockForm, setShowStockForm] = useState(false);
+  const [newStockName, setNewStockName] = useState('');
+  const [newStockAmount, setNewStockAmount] = useState(0);
+  const [selectedStock, setSelectedStock] = useState(null); // Track selected stock
+  const [editingStock, setEditingStock] = useState(null); // For editing form
+  const [selectedBoxId, setSelectedBoxId] = useState(null); // Track selected box
 
   const paperState = useRef({
     boxes: [],
@@ -205,12 +216,13 @@ const PaperCanvas = () => {
       const x = stockData.position?.x || Math.random() * (paper.view.size.width - boxWidth);
       const y = stockData.position?.y || Math.random() * (paper.view.size.height - boxHeight);
 
+      const isSelected = selectedBoxId === stockData.id;
       const stockBox = new paper.Path.Rectangle({
         point: [x - boxWidth/2, y - boxHeight/2],
         size: [boxWidth, boxHeight],
-        fillColor: 'lightblue',
-        strokeColor: 'blue',
-        strokeWidth: 2
+        fillColor: isSelected ? '#ffe082' : 'lightblue', // Highlight if selected
+        strokeColor: isSelected ? '#ff9800' : 'blue',
+        strokeWidth: isSelected ? 3 : 2
       });
 
       const stockName = stockData.name || `Stock ${index + 1}`;
@@ -227,14 +239,12 @@ const PaperCanvas = () => {
       stockGroup.stockId = stockData.id;
       stockGroup.position = new paper.Point(x, y);
 
-      // Update existing stock name if it exists
-      const existingBox = paperState.current.boxes.find(b => b.stockId === stockData.id);
-      if (existingBox) {
-        const textToUpdate = existingBox.children[1];
-        if (textToUpdate && textToUpdate.content !== stockName) {
-          textToUpdate.content = stockName;
-        }
-      }
+      // Add selection logic
+      stockGroup.onClick = (event) => {
+        setSelectedStock(stockData);
+        setEditingStock({ ...stockData });
+        event.stopPropagation();
+      };
 
       // Add drag functionality
       let isDragging = false;
@@ -243,6 +253,9 @@ const PaperCanvas = () => {
       stockGroup.onMouseDown = (event) => {
         isDragging = true;
         offset = stockGroup.position.subtract(event.point);
+        // Ensure selection is set on drag start
+        setSelectedStock(stockData);
+        setEditingStock({ ...stockData });
       };
 
       stockGroup.onMouseDrag = (event) => {
@@ -254,7 +267,11 @@ const PaperCanvas = () => {
       };
 
       stockGroup.onMouseUp = () => {
+        // Only set isDragging to false, don't clear selection
         isDragging = false;
+        // Keep selection after drag
+        setSelectedStock(stockData);
+        setEditingStock({ ...stockData });
       };
 
       newBoxes.push(stockGroup);
@@ -281,6 +298,11 @@ const PaperCanvas = () => {
     // Redraw axes and view
     drawAxes();
     paper.view.draw();
+  }, [jsonData, selectedBoxId]);
+
+  // Keep editor value in sync with jsonData
+  useEffect(() => {
+    setEditorValue(JSON.stringify(jsonData, null, 2));
   }, [jsonData]);
 
   const addBox = () => {
@@ -291,6 +313,7 @@ const PaperCanvas = () => {
       id: maxId + 1,
       name: `Stock ${maxId + 1}`,
       type: 'stock',
+      amount: 0,
       position: {
         x: Math.round(Math.random() * (paper.view.size.width - 50)),
         y: Math.round(Math.random() * (paper.view.size.height - 50))
@@ -301,19 +324,44 @@ const PaperCanvas = () => {
       boxes: [...prev.boxes, newStock]
     }));
   };
+  
+  const [pendingStockPlacement, setPendingStockPlacement] = useState(false);
+  const [pendingStockData, setPendingStockData] = useState(null);
 
-  const removeBox = () => {
-    console.log('Removing stock');
-    setJsonData(prev => {
-      if (prev.boxes.length === 0) return prev;
-      const removedId = prev.boxes[prev.boxes.length - 1].id;
-      return {
-        ...prev,
-        boxes: prev.boxes.slice(0, -1),
-        connections: prev.connections.filter(conn => conn.fromStockId !== removedId && conn.toStockId !== removedId)
-      };
-    });
+  const addBoxWithNameAndAmount = (name, amount) => {
+    console.log(`Preparing to add box with name: ${name}, amount: ${amount}`);
+    // Set pending stock data and enable placement mode
+    setPendingStockData({ name, amount });
+    setPendingStockPlacement(true);
+    // No alert - we'll use a custom cursor instead
   };
+  
+  const placeStockAtPosition = (x, y) => {
+    if (!pendingStockData) return;
+    
+    console.log(`Adding box at position: (${x}, ${y})`);
+    // Generate a unique stock ID
+    const maxId = Math.max(0, ...jsonData.boxes.map(b => b.id || 0));
+    const newStock = {
+      id: maxId + 1,
+      name: pendingStockData.name,
+      type: 'stock',
+      amount: pendingStockData.amount,
+      position: {
+        x: x,
+        y: y
+      }
+    };
+    setJsonData(prev => ({
+      ...prev,
+      boxes: [...prev.boxes, newStock]
+    }));
+    
+    // Reset pending state
+    setPendingStockData(null);
+    setPendingStockPlacement(false);
+  };
+  
 
   // Helper function to calculate edge intersection point
   const getEdgePoint = (fromBox, toBox) => {
@@ -423,7 +471,7 @@ const PaperCanvas = () => {
     
     setConnections(newConnections);
     paperState.current.connections = newConnections;
-    // Only update positions, not names, to preserve manual edits from the editor
+    // Only update positions, not names or amounts, to preserve manual edits from the editor
     setJsonData(prev => ({
       ...prev,
       boxes: prev.boxes.map(box => {
@@ -434,7 +482,8 @@ const PaperCanvas = () => {
             position: {
               x: Math.round(updatedBox.position.x),
               y: Math.round(updatedBox.position.y)
-            }
+            },
+            amount: box.amount !== undefined ? box.amount : 0
           };
         }
         return box;
@@ -453,7 +502,8 @@ const PaperCanvas = () => {
         position: {
           x: Math.round(draggedBox.position.x),
           y: Math.round(draggedBox.position.y)
-        }
+        },
+        amount: newBoxes[boxIndex].amount || 0
       };
       return { ...prev, boxes: newBoxes };
     });
@@ -526,6 +576,11 @@ const PaperCanvas = () => {
         .SplitPane-resizer[style*="pointer-events: none"] {
           pointer-events: auto !important;
         }
+        
+        /* Custom cursor for stock placement */
+        .stock-placement-cursor {
+          cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='2' ry='2' fill='%234CAF50' fill-opacity='0.7' stroke='%23333' stroke-width='2'/%3E%3Ctext x='16' y='20' font-family='Arial' font-size='12' text-anchor='middle' fill='white'%3ES%3C/text%3E%3C/svg%3E") 16 16, crosshair;
+        }
       `}</style>
       <SplitPane split="vertical" defaultSize="75%" resizerStyle={{backgroundColor: '#ccc', width: '5px'}} onPaneResized={() => resizeCanvasRef.current && resizeCanvasRef.current()}>
         <div style={{ position: 'relative', height: '100%' }}>
@@ -533,38 +588,337 @@ const PaperCanvas = () => {
             ref={canvasRef}
             id="myCanvas"
             resize="true"
-            style={{ display: 'block', width: '100%', height: '100%' }}
+            className={pendingStockPlacement ? 'stock-placement-cursor' : ''}
+            style={{ 
+              display: 'block', 
+              width: '100%', 
+              height: '100%'
+            }}
+            onClick={(e) => {
+              if (pendingStockPlacement && pendingStockData) {
+                // Get canvas-relative coordinates
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                placeStockAtPosition(x, y);
+              } else {
+                // Check if the click was directly on the canvas (not on a stock)
+                // This is determined by checking if the event target is the canvas itself
+                if (e.target === canvasRef.current) {
+                  // Clear selection when clicking on empty canvas area
+                  setSelectedStock(null);
+                  setEditingStock(null);
+                }
+              }
+            }}
           />
-          <button
-            onClick={addBox}
-            style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}
+          <div 
+            style={{
+              position: 'absolute',
+              top: toolboxPosition.y,
+              left: toolboxPosition.x,
+              zIndex: 10,
+              backgroundColor: '#f0f0f0',
+              border: '1px solid #ccc',
+              borderRadius: '5px',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+              width: toolboxCollapsed ? '40px' : '200px',
+              transition: 'width 0.3s ease',
+              overflow: 'hidden'
+            }}
           >
-            Add Stock
-          </button>
-          <button
-            onClick={removeBox}
-            style={{ position: 'absolute', top: 10, left: 100, zIndex: 10 }}
-          >
-            Remove Stock
-          </button>
+            {/* Toolbox header with drag handle and collapse button */}
+            <div 
+              style={{
+                padding: '8px',
+                backgroundColor: pendingStockPlacement ? '#e0ffe0' : '#e0e0e0',
+                cursor: 'move',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                transition: 'background-color 0.3s ease'
+              }}
+              onMouseDown={(e) => {
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startLeft = toolboxPosition.x;
+                const startTop = toolboxPosition.y;
+                
+                const onMouseMove = (moveEvent) => {
+                  const dx = moveEvent.clientX - startX;
+                  const dy = moveEvent.clientY - startY;
+                  setToolboxPosition({
+                    x: startLeft + dx,
+                    y: startTop + dy
+                  });
+                };
+                
+                const onMouseUp = () => {
+                  document.removeEventListener('mousemove', onMouseMove);
+                  document.removeEventListener('mouseup', onMouseUp);
+                };
+                
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+              }}
+            >
+              <span>
+                {toolboxCollapsed ? '🧰' : (
+                  pendingStockPlacement 
+                    ? <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>Click to place: {pendingStockData?.name}</span>
+                    : selectedStock
+                      ? <span style={{ color: '#ff6600', fontWeight: 'bold' }}>Selected: {selectedStock.name}</span>
+                      : 'Stock Toolbox'
+                )}
+              </span>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                {pendingStockPlacement && !toolboxCollapsed && (
+                  <button 
+                    onClick={() => {
+                      setPendingStockPlacement(false);
+                      setPendingStockData(null);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      color: '#f44336'
+                    }}
+                    title="Cancel placement"
+                  >
+                    ✖
+                  </button>
+                )}
+                <button 
+                  onClick={() => setToolboxCollapsed(!toolboxCollapsed)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '16px'
+                  }}
+                >
+                  {toolboxCollapsed ? '➕' : '➖'}
+                </button>
+              </div>
+            </div>
+            
+            {/* Toolbox content */}
+            {!toolboxCollapsed && (
+              <div style={{ padding: '10px' }}>
+                {selectedStock ? (
+                  // Edit selected stock form
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#ff6600' }}>
+                      Edit Selected Stock
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px' }}>Stock Name:</label>
+                      <input 
+                        type="text" 
+                        value={editingStock ? editingStock.name : ''}
+                        onChange={(e) => setEditingStock({ ...editingStock, name: e.target.value })}
+                        style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px' }}>Amount:</label>
+                      <input 
+                        type="number" 
+                        value={editingStock ? editingStock.amount : ''}
+                        onChange={(e) => setEditingStock({ ...editingStock, amount: Number(e.target.value) })}
+                        style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <button 
+                        onClick={() => {
+                          // Update the selected stock
+                          setJsonData(prev => ({
+                            ...prev,
+                            boxes: prev.boxes.map(box => 
+                              box.id === editingStock.id ? editingStock : box
+                            )
+                          }));
+                          
+                          // Update selected stock state
+                          setSelectedStock(editingStock);
+                          
+                          // Keep the form values as they are (don't reset)
+                          // This allows continued editing of the same stock
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 12px',
+                          backgroundColor: '#ff6600',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Update
+                      </button>
+                      <button 
+                        onClick={() => {
+                          // Deselect the stock only when Cancel is pressed
+                          setSelectedStock(null);
+                          setEditingStock(null);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 12px',
+                          backgroundColor: '#9e9e9e',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        // Remove the selected stock
+                        setJsonData(prev => ({
+                          ...prev,
+                          boxes: prev.boxes.filter(box => box.id !== selectedStock.id),
+                          connections: prev.connections.filter(
+                            conn => conn.fromStockId !== selectedStock.id && conn.toStockId !== selectedStock.id
+                          )
+                        }));
+                        
+                        // Deselect the stock
+                        setSelectedStock(null);
+                        setEditingStock(null);
+                      }}
+                      style={{
+                        marginTop: '8px',
+                        padding: '6px 12px',
+                        backgroundColor: '#f44336',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Delete Stock
+                    </button>
+                  </div>
+                ) : !showStockForm ? (
+                  // Regular toolbox buttons when no stock is selected
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button 
+                      onClick={() => setShowStockForm(true)}
+                      disabled={pendingStockPlacement}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: pendingStockPlacement ? '#cccccc' : '#4CAF50',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: pendingStockPlacement ? 'not-allowed' : 'pointer',
+                        opacity: pendingStockPlacement ? 0.7 : 1
+                      }}
+                    >
+                      Add Stock
+                    </button>
+                    
+                  </div>
+                ) : (
+                  // Add new stock form
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px' }}>Stock Name:</label>
+                      <input 
+                        type="text" 
+                        value={newStockName}
+                        onChange={(e) => setNewStockName(e.target.value)}
+                        style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px' }}>Initial Amount:</label>
+                      <input 
+                        type="number" 
+                        value={newStockAmount}
+                        onChange={(e) => setNewStockAmount(Number(e.target.value))}
+                        style={{ width: '100%', padding: '6px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <button 
+                        onClick={() => {
+                          if (newStockName.trim()) {
+                            // Call modified addBox with name and amount
+                            addBoxWithNameAndAmount(newStockName, newStockAmount);
+                            // Reset form
+                            setNewStockName('');
+                            setNewStockAmount(0);
+                            setShowStockForm(false);
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 12px',
+                          backgroundColor: '#4CAF50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Add
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setNewStockName('');
+                          setNewStockAmount(0);
+                          setShowStockForm(false);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 12px',
+                          backgroundColor: '#9e9e9e',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        <div style={{ height: '100%', borderLeft: '1px solid #ccc', overflowY: 'auto', display: 'flex', flexDirection: 'column', flex: 1 }}>
-          <ReactJson
-            src={jsonData}
-            name={false}
-            displayDataTypes={false}
-            displayObjectSize={false}
-            enableClipboard={true}
-            style={{ flex: 1, height: '100%', fontSize: 14, textAlign: 'left', background: 'white', padding: 8, overflow: 'auto' }}
-            theme="rjv-default"
-            onEdit={e => {
-              if (e.updated_src) setJsonData(e.updated_src);
+        <div style={{ height: '100%', borderLeft: '1px solid #ccc', display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <Editor
+            height="100%"
+            language="json"
+            value={editorValue}
+            onChange={(value) => {
+              setEditorValue(value);
+              try {
+                const parsedValue = JSON.parse(value);
+                setJsonData(parsedValue);
+              } catch (error) {
+                // Don't update if JSON is invalid
+                console.error('Invalid JSON:', error);
+              }
             }}
-            onAdd={e => {
-              if (e.updated_src) setJsonData(e.updated_src);
-            }}
-            onDelete={e => {
-              if (e.updated_src) setJsonData(e.updated_src);
+            options={{
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              fontSize: 14,
+              automaticLayout: true,
+              formatOnPaste: true,
+              formatOnType: true
             }}
           />
         </div>

@@ -265,6 +265,74 @@ const PaperCanvas = () => {
       console.log('Initializing Paper.js for the first time');
       paper.setup(canvasRef.current);
       paperInitialized.current = true;
+      
+      // Add canvas dragging functionality in normal mode
+      const tool = new paper.Tool();
+      let lastPoint = null;
+      
+      tool.onMouseDown = (event) => {
+        // Get current mode
+        const getCurrentMode = () => {
+          const modeSelect = document.querySelector('#mode-select');
+          return modeSelect ? modeSelect.value : 'normal';
+        };
+        
+        // Only enable canvas dragging in normal mode
+        if (getCurrentMode() === 'normal') {
+          // Check if we're clicking on empty space (not on any item)
+          const hitResult = paper.project.hitTest(event.point);
+          if (!hitResult || (hitResult.item && hitResult.item.name === 'axis')) {
+            lastPoint = event.point.clone();
+          }
+        }
+      };
+      
+      tool.onMouseDrag = (event) => {
+        // Get current mode
+        const getCurrentMode = () => {
+          const modeSelect = document.querySelector('#mode-select');
+          return modeSelect ? modeSelect.value : 'normal';
+        };
+        
+        // Only enable canvas dragging in normal mode
+        if (getCurrentMode() === 'normal' && lastPoint) {
+          // Calculate the delta movement
+          const delta = event.point.subtract(lastPoint);
+          
+          // Move all items in the project
+          paper.project.getItems().forEach(item => {
+            item.position = item.position.add(delta);
+          });
+          
+          // Update lastPoint for the next drag event
+          lastPoint = event.point.clone();
+          
+          // Update the JSON data to reflect the new positions
+          setJsonData(prev => {
+            const newBoxes = prev.boxes.map(box => {
+              const paperBox = paperState.current.boxes.find(pb => pb.stockId === box.id);
+              if (paperBox) {
+                return {
+                  ...box,
+                  position: {
+                    x: Math.round(paperBox.position.x),
+                    y: Math.round(paperBox.position.y)
+                  }
+                };
+              }
+              return box;
+            });
+            return { ...prev, boxes: newBoxes };
+          });
+          
+          // Redraw the view
+          paper.view.draw();
+        }
+      };
+      
+      tool.onMouseUp = () => {
+        lastPoint = null;
+      };
     } else {
 
       // If Paper.js is already initialized, just update the view
@@ -761,9 +829,9 @@ const PaperCanvas = () => {
       const labelPosition = new paper.Point(boxBounds.right + loopRadius, boxCenter.y);
       let displayText = connectionData.name;
       
-      // Default values if not specified - always use Number to ensure we have a valid numeric value
-      const deductAmount = connectionData.deductAmount !== undefined ? Number(connectionData.deductAmount) : 1;
-      const transferAmount = connectionData.transferAmount !== undefined ? Number(connectionData.transferAmount) : 1;
+      // Default values if not specified - support both numeric and percentage values
+      const deductAmount = connectionData.deductAmount !== undefined ? connectionData.deductAmount : 1;
+      const transferAmount = connectionData.transferAmount !== undefined ? connectionData.transferAmount : 1;
       
       // Always show both amounts in the label
       displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
@@ -949,9 +1017,9 @@ const PaperCanvas = () => {
       const midPoint = start.add(arrowBase).divide(2);
       let displayText = connectionData.name;
       
-      // Default values if not specified - always use Number to ensure we have a valid numeric value
-      const deductAmount = connectionData.deductAmount !== undefined ? Number(connectionData.deductAmount) : 1;
-      const transferAmount = connectionData.transferAmount !== undefined ? Number(connectionData.transferAmount) : 1;
+      // Default values if not specified
+      const deductAmount = connectionData.deductAmount !== undefined ? connectionData.deductAmount : 1;
+      const transferAmount = connectionData.transferAmount !== undefined ? connectionData.transferAmount : 1;
       
       // Always show both amounts in the label
       displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
@@ -1000,11 +1068,12 @@ const PaperCanvas = () => {
             
             if (groupConnectionData) {
               // Ensure deductAmount and transferAmount have default values if missing
+              // Preserve string format for percentage values
               const deductAmount = groupConnectionData.deductAmount !== undefined ? 
-                Number(groupConnectionData.deductAmount) : 1;
+                groupConnectionData.deductAmount : 1;
                 
               const transferAmount = groupConnectionData.transferAmount !== undefined ? 
-                Number(groupConnectionData.transferAmount) : 1;
+                groupConnectionData.transferAmount : 1;
               
               // Create a properly initialized selection object
               const selectionData = {
@@ -1032,11 +1101,12 @@ const PaperCanvas = () => {
         
         if (groupConnectionData) {
           // Ensure deductAmount and transferAmount have default values if missing
+          // Preserve string format for percentage values
           const deductAmount = groupConnectionData.deductAmount !== undefined ? 
-            Number(groupConnectionData.deductAmount) : 1;
+            groupConnectionData.deductAmount : 1;
             
           const transferAmount = groupConnectionData.transferAmount !== undefined ? 
-            Number(groupConnectionData.transferAmount) : 1;
+            groupConnectionData.transferAmount : 1;
           
           // Create a properly initialized selection object
           const selectionData = {
@@ -1120,21 +1190,42 @@ const PaperCanvas = () => {
     jsonData.connections.forEach(connection => {
       const fromStock = updatedBoxes.find(box => box.id === connection.fromStockId);
       const toStock = updatedBoxes.find(box => box.id === connection.toStockId);
-      const deductAmount = connection.deductAmount !== undefined && connection.deductAmount !== null ? connection.deductAmount : 1;
-      const transferAmount = connection.transferAmount !== undefined && connection.transferAmount !== null ? connection.transferAmount : 1;
+      const deductAmountRaw = connection.deductAmount !== undefined && connection.deductAmount !== null ? connection.deductAmount : 1;
+      const transferAmountRaw = connection.transferAmount !== undefined && connection.transferAmount !== null ? connection.transferAmount : 1;
       
       if (fromStock && toStock) {
-        // Only transfer if source stock has enough (unless it's infinite)
-        if (fromStock.shape === 'circle' || fromStock.amount >= deductAmount) {
-          // Deduct from source (unless it's infinite)
-          if (fromStock.shape !== 'circle') {
-            fromStock.amount = Math.max(0, fromStock.amount - deductAmount);
-          }
-          
-          // Add to destination (unless it's infinite)
-          if (toStock.shape !== 'circle') {
-            toStock.amount += transferAmount;
-          }
+        // Calculate actual deduct amount based on whether it's percentage or fixed
+        let actualDeductAmount;
+        if (typeof deductAmountRaw === 'string' && deductAmountRaw.includes('%')) {
+          // Percentage-based deduction
+          const percentage = parseFloat(deductAmountRaw) / 100;
+          actualDeductAmount = fromStock.amount * percentage;
+        } else {
+          // Fixed amount deduction
+          actualDeductAmount = Number(deductAmountRaw);
+        }
+        
+        // Calculate actual transfer amount based on whether it's percentage or fixed
+        let actualTransferAmount;
+        if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
+          // Percentage-based transfer
+          const percentage = parseFloat(transferAmountRaw) / 100;
+          // For percentage transfers, we base it on the source stock's amount
+          actualTransferAmount = fromStock.amount * percentage;
+        } else {
+          // Fixed amount transfer
+          actualTransferAmount = Number(transferAmountRaw);
+        }
+        
+        // Always transfer (regardless of source stock amount)
+        // Deduct from source (unless it's infinite)
+        if (fromStock.shape !== 'circle') {
+          fromStock.amount = fromStock.amount - actualDeductAmount;
+        }
+        
+        // Add to destination (unless it's infinite)
+        if (toStock.shape !== 'circle') {
+          toStock.amount += actualTransferAmount;
         }
       }
     });
@@ -1173,30 +1264,41 @@ const PaperCanvas = () => {
     // Recreate boxes with updated data
     if (updatedJsonData.boxes) {
       updatedJsonData.boxes.forEach(boxData => {
+        // Create text label first to measure its size
+        const displayAmount = boxData.shape === 'circle' ? '∞' : boxData.amount;
+        const textContent = `${boxData.name}\n${displayAmount}`;
+        const textLabel = new paper.PointText({
+          point: [boxData.x, boxData.y],
+          content: textContent,
+          fillColor: 'black',
+          fontSize: 12,
+          justification: 'center'
+        });
+        
+        // Measure text dimensions and add padding
+        const textBounds = textLabel.bounds;
+        const paddingX = 40; // Increased horizontal padding
+        const paddingY = 30; // Increased vertical padding
+        
+        // Create stock box based on text size
         const stockBox = boxData.shape === 'circle' ? 
           new paper.Path.Circle({
             center: [boxData.x, boxData.y],
-            radius: 30,
+            radius: Math.max(40, Math.max(textBounds.width/2 + paddingX/2, textBounds.height/2 + paddingY/2)),
             fillColor: '#90EE90',
             strokeColor: 'black',
             strokeWidth: 2
           }) :
           new paper.Path.Rectangle({
-            point: [boxData.x - 40, boxData.y - 20],
-            size: [80, 40],
+            point: [boxData.x - textBounds.width/2 - paddingX, boxData.y - textBounds.height/2 - paddingY],
+            size: [textBounds.width + paddingX*2, textBounds.height + paddingY*2],
             fillColor: '#ADD8E6',
             strokeColor: 'black',
             strokeWidth: 2
           });
         
-        const displayAmount = boxData.shape === 'circle' ? '∞' : boxData.amount;
-        const textLabel = new paper.PointText({
-          point: [boxData.x, boxData.y + 5],
-          content: `${boxData.name}\n${displayAmount}`,
-          fillColor: 'black',
-          fontSize: 12,
-          justification: 'center'
-        });
+        // Adjust text position to center it properly
+        textLabel.position = new paper.Point(boxData.x, boxData.y);
         
         const stockGroup = new paper.Group([stockBox, textLabel]);
         stockGroup.stockId = boxData.id;
@@ -1578,8 +1680,8 @@ const PaperCanvas = () => {
               <button
                 style={{ width: '100%', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
                 onClick={() => {
-                  const isValidFinite = newStockShape === 'rectangle' && newStockName && newStockAmount > 0;
-                  const isValidInfinite = newStockShape === 'circle' && newStockName;
+                  const isValidFinite = newStockShape === 'rectangle' && newStockName && newStockName.trim() !== '';
+                  const isValidInfinite = newStockShape === 'circle' && newStockName && newStockName.trim() !== '';
                   
                   if (isValidFinite || isValidInfinite) {
                     addBoxWithNameAndAmount(newStockName, newStockAmount, newStockShape);
@@ -1627,7 +1729,7 @@ const PaperCanvas = () => {
                       style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
                       onClick={() => {
                         if (editingItem?.name && editingItem?.name.trim() !== '' && 
-                            typeof editingItem?.amount === 'number' && editingItem?.amount > 0) {
+                            typeof editingItem?.amount === 'number') {
                           // Update the JSON data
                           const updatedJsonData = {
                             ...jsonData,
@@ -1644,7 +1746,7 @@ const PaperCanvas = () => {
                           setEditingItem(null);
                           setSelectedBoxId(null);
                         } else {
-                          alert('Please enter a valid stock name and amount greater than 0.');
+                          alert('Please enter a valid stock name and amount.');
                         }
                       }}
                     >
@@ -1699,27 +1801,85 @@ const PaperCanvas = () => {
                   </div>
                   <div style={{ marginBottom: '6px' }}>
                     <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Deduct Amount:</label>
-                    <input
-                      type="number"
-                      placeholder="Amount to deduct from source"
-                      value={editingItem?.deductAmount ?? 1}
-                      onChange={e => setEditingItem({...editingItem, deductAmount: Number(e.target.value)})}
-                      style={{ width: '70%', padding: '4px' }}
-                      min="0"
-                      step="0.1"
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <input
+                        type="number"
+                        placeholder="Amount to deduct from source"
+                        value={typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%') 
+                          ? editingItem.deductAmount.replace('%', '') 
+                          : editingItem?.deductAmount ?? 1}
+                        onChange={e => {
+                          const value = e.target.value;
+                          const isPercent = document.getElementById('deduct-percent-checkbox').checked;
+                          setEditingItem({
+                            ...editingItem, 
+                            deductAmount: isPercent ? `${value}%` : Number(value)
+                          });
+                        }}
+                        style={{ width: '60%', padding: '4px' }}
+                        min="0"
+                        step="0.1"
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <input
+                          id="deduct-percent-checkbox"
+                          type="checkbox"
+                          checked={typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%')}
+                          onChange={e => {
+                            const isPercent = e.target.checked;
+                            const currentValue = typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%')
+                              ? parseFloat(editingItem.deductAmount.replace('%', ''))
+                              : (editingItem?.deductAmount ?? 1);
+                            setEditingItem({
+                              ...editingItem,
+                              deductAmount: isPercent ? `${currentValue}%` : Number(currentValue)
+                            });
+                          }}
+                        />
+                        <label htmlFor="deduct-percent-checkbox" style={{ fontSize: '12px' }}>%</label>
+                      </div>
+                    </div>
                   </div>
                   <div style={{ marginBottom: '6px' }}>
                     <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Transfer Amount:</label>
-                    <input
-                      type="number"
-                      placeholder="Amount to add to destination"
-                      value={editingItem?.transferAmount ?? 1}
-                      onChange={e => setEditingItem({...editingItem, transferAmount: Number(e.target.value)})}
-                      style={{ width: '70%', padding: '4px' }}
-                      min="0"
-                      step="0.1"
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <input
+                        type="number"
+                        placeholder="Amount to add to destination"
+                        value={typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%') 
+                          ? editingItem.transferAmount.replace('%', '') 
+                          : editingItem?.transferAmount ?? 1}
+                        onChange={e => {
+                          const value = e.target.value;
+                          const isPercent = document.getElementById('transfer-percent-checkbox').checked;
+                          setEditingItem({
+                            ...editingItem, 
+                            transferAmount: isPercent ? `${value}%` : Number(value)
+                          });
+                        }}
+                        style={{ width: '60%', padding: '4px' }}
+                        min="0"
+                        step="0.1"
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <input
+                          id="transfer-percent-checkbox"
+                          type="checkbox"
+                          checked={typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%')}
+                          onChange={e => {
+                            const isPercent = e.target.checked;
+                            const currentValue = typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%')
+                              ? parseFloat(editingItem.transferAmount.replace('%', ''))
+                              : (editingItem?.transferAmount ?? 1);
+                            setEditingItem({
+                              ...editingItem,
+                              transferAmount: isPercent ? `${currentValue}%` : Number(currentValue)
+                            });
+                          }}
+                        />
+                        <label htmlFor="transfer-percent-checkbox" style={{ fontSize: '12px' }}>%</label>
+                      </div>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
                     <button
@@ -1730,18 +1890,34 @@ const PaperCanvas = () => {
                         console.log("selectedItem:", selectedItem);
                         console.log("jsonData.connections:", jsonData.connections);
                         
-                        // Safeguard: ensure editingItem has the right properties with numeric values
+                        // Safeguard: ensure editingItem has the right properties with valid values
+                        // Now supporting both numeric values and percentage strings
                         const safeEditingItem = {
                           ...editingItem,
                           name: editingItem?.name || "Unnamed Connection",
-                          deductAmount: editingItem?.deductAmount !== undefined && editingItem?.deductAmount !== null && editingItem?.deductAmount !== '' ? Number(editingItem.deductAmount) : 1,
-                          transferAmount: editingItem?.transferAmount !== undefined && editingItem?.transferAmount !== null && editingItem?.transferAmount !== '' ? Number(editingItem.transferAmount) : 1
+                          deductAmount: editingItem?.deductAmount !== undefined && editingItem?.deductAmount !== null && editingItem?.deductAmount !== '' ? 
+                            editingItem.deductAmount : 1,
+                          transferAmount: editingItem?.transferAmount !== undefined && editingItem?.transferAmount !== null && editingItem?.transferAmount !== '' ? 
+                            editingItem.transferAmount : 1
                         };
                         console.log("Safe editing item with defaults:", safeEditingItem);
                         
+                        // Validate deduct amount (can be number or percentage string)
+                        const isValidDeductAmount = typeof safeEditingItem.deductAmount === 'number' ? 
+                          safeEditingItem.deductAmount >= 0 : 
+                          typeof safeEditingItem.deductAmount === 'string' && 
+                          safeEditingItem.deductAmount.includes('%') && 
+                          parseFloat(safeEditingItem.deductAmount) >= 0;
+                          
+                        // Validate transfer amount (can be number or percentage string)
+                        const isValidTransferAmount = typeof safeEditingItem.transferAmount === 'number' ? 
+                          safeEditingItem.transferAmount >= 0 : 
+                          typeof safeEditingItem.transferAmount === 'string' && 
+                          safeEditingItem.transferAmount.includes('%') && 
+                          parseFloat(safeEditingItem.transferAmount) >= 0;
+                        
                         if (safeEditingItem.name && safeEditingItem.name.trim() !== '' && 
-                            typeof safeEditingItem.deductAmount === 'number' && safeEditingItem.deductAmount >= 0 && 
-                            typeof safeEditingItem.transferAmount === 'number' && safeEditingItem.transferAmount >= 0) {
+                            isValidDeductAmount && isValidTransferAmount) {
                           console.log("Connection validation passed, saving changes...");
                           
                           // Update the JSON data using the safe values we created

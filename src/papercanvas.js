@@ -1641,9 +1641,10 @@ const PaperCanvas = () => {
                           };
                           setJsonData(updatedJsonData);
                           setEditorValue(JSON.stringify(updatedJsonData, null, 2));
-                          setSelectedItem({ ...selectedItem, name: editingItem.name, amount: editingItem.amount });
-                          setEditingItem({ ...editingItem });
-                          alert(`Stock '${editingItem.name}' has been saved successfully!`);
+                          // Clear selection after saving
+                          setSelectedItem(null);
+                          setEditingItem(null);
+                          setSelectedBoxId(null);
                         } else {
                           alert('Please enter a valid stock name and amount greater than 0.');
                         }

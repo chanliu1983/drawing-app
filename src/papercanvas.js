@@ -33,6 +33,10 @@ const PaperCanvas = () => {
   const [currentCanvasName, setCurrentCanvasName] = useState('default');
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [newCanvasName, setNewCanvasName] = useState('');
+  
+  // Simulation state
+  const [simulationSteps, setSimulationSteps] = useState(0);
+  const [targetSteps, setTargetSteps] = useState(1);
 
   const paperState = useRef({
     boxes: [],
@@ -1163,8 +1167,21 @@ const PaperCanvas = () => {
     setJsonData(updatedJsonData);
     setEditorValue(JSON.stringify(updatedJsonData, null, 2));
     
+    // Increment simulation step counter
+    setSimulationSteps(prev => prev + 1);
+    
     // Refresh the visual display
     refreshBoxes(updatedJsonData);
+  };
+
+  const runMultipleSteps = () => {
+    for (let i = 0; i < targetSteps; i++) {
+      runSimulation();
+    }
+  };
+
+  const resetSimulation = () => {
+    setSimulationSteps(0);
   };
 
   const refreshBoxes = (updatedJsonData) => {
@@ -1850,16 +1867,56 @@ const PaperCanvas = () => {
               <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#f0f8ff', borderRadius: '4px', border: '1px solid #b3d9ff' }}>
                 <strong>Simulation Mode</strong>
               </div>
+              
+              {/* Step Counter Display */}
+              <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#e8f5e8', borderRadius: '4px', border: '1px solid #c3e6c3', textAlign: 'center' }}>
+                <strong>Steps Completed: {simulationSteps}</strong>
+              </div>
+              
+              {/* Target Steps Input */}
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold', fontSize: '12px' }}>Target Steps:</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={targetSteps}
+                  onChange={e => setTargetSteps(Math.max(1, Math.min(100, Number(e.target.value))))}
+                  style={{ width: '100%', padding: '4px', marginBottom: '6px' }}
+                />
+              </div>
+              
+              {/* Simulation Buttons */}
+              <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
+                <button
+                  style={{ flex: 1, background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
+                  onClick={() => {
+                    runSimulation();
+                  }}
+                >
+                  Run 1 Step
+                </button>
+                <button
+                  style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
+                  onClick={() => {
+                    runMultipleSteps();
+                  }}
+                >
+                  Run {targetSteps} Steps
+                </button>
+              </div>
+              
               <button
-                style={{ width: '100%', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', padding: '10px', fontWeight: 'bold', marginBottom: '10px' }}
+                style={{ width: '100%', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
                 onClick={() => {
-                  runSimulation();
+                  resetSimulation();
                 }}
               >
-                Run Simulation Step
+                Reset Counter
               </button>
-              <div style={{ fontSize: '12px', color: '#6c757d', textAlign: 'center' }}>
-                Click to transfer amounts through all connections
+              
+              <div style={{ fontSize: '11px', color: '#6c757d', textAlign: 'center', marginTop: '8px' }}>
+                Set target steps (1-100) and run simulation
               </div>
             </div>
           )}

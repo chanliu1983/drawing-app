@@ -20,9 +20,13 @@ const PaperCanvas = () => {
   // Removed selectedMode - using only currentMode for simplicity
   const [newStockName, setNewStockName] = useState('');
   const [newStockAmount, setNewStockAmount] = useState(0);
+  const [newStockShape, setNewStockShape] = useState('rectangle'); // 'rectangle' or 'circle'
   const [selectedStock, setSelectedStock] = useState(null); // Track selected stock
   const [editingStock, setEditingStock] = useState(null); // For editing form
   const [selectedBoxId, setSelectedBoxId] = useState(null); // Track selected box
+  const [selectedConnection, setSelectedConnection] = useState(null); // Track selected connection
+  const [editingConnection, setEditingConnection] = useState(null); // For editing connection form
+  const [editMode, setEditMode] = useState('stock'); // 'stock' or 'connection'
   const [jsonEditorVisible, setJsonEditorVisible] = useState(true); // Control JSON editor visibility
   const [splitSize, setSplitSize] = useState('70%'); // Control split pane size
   
@@ -108,7 +112,7 @@ const PaperCanvas = () => {
     const maxId = Math.max(0, ...jsonData.connections.map(c => c.id || 0));
     const fromStockData = jsonData.boxes.find(box => box.id === fromStockId);
     const toStockData = jsonData.boxes.find(box => box.id === toStockId);
-    const connectionName = fromStockData && toStockData ? `${fromStockData.name} to ${toStockData.name}` : `Connection ${maxId + 1}`;
+    const connectionName = fromStockData && toStockData ? `${fromStockData.name} -> ${toStockData.name}` : `Connection ${maxId + 1}`;
     const newConnection = {
       id: maxId + 1,
       name: connectionName,
@@ -445,13 +449,29 @@ const PaperCanvas = () => {
       const y = stockData.position?.y || Math.random() * (paper.view.size.height - boxHeight);
 
       const isSelected = selectedBoxId === stockData.id;
-      const stockBox = new paper.Path.Rectangle({
-        point: [x - boxWidth/2, y - boxHeight/2],
-        size: [boxWidth, boxHeight],
-        fillColor: isSelected ? '#ffe082' : 'lightblue', // Highlight if selected
-        strokeColor: isSelected ? '#ff9800' : 'blue',
-        strokeWidth: isSelected ? 3 : 2
-      });
+      const isCircle = stockData.shape === 'circle';
+      
+      let stockBox;
+      if (isCircle) {
+        // Create circle for infinite stocks
+        const radius = Math.max(boxWidth, boxHeight) / 2;
+        stockBox = new paper.Path.Circle({
+          center: [x, y],
+          radius: radius,
+          fillColor: isSelected ? '#ffe082' : 'lightgreen', // Different color for infinite stocks
+          strokeColor: isSelected ? '#ff9800' : 'green',
+          strokeWidth: isSelected ? 3 : 2
+        });
+      } else {
+        // Create rectangle for finite stocks
+        stockBox = new paper.Path.Rectangle({
+          point: [x - boxWidth/2, y - boxHeight/2],
+          size: [boxWidth, boxHeight],
+          fillColor: isSelected ? '#ffe082' : 'lightblue',
+          strokeColor: isSelected ? '#ff9800' : 'blue',
+          strokeWidth: isSelected ? 3 : 2
+        });
+      }
 
       const stockName = stockData.name || `Stock ${index + 1}`;
       const stockAmount = stockData.amount || 0;
@@ -639,10 +659,10 @@ const PaperCanvas = () => {
   const [connectionStart, setConnectionStart] = useState(null);
   const [tempConnectionLine, setTempConnectionLine] = useState(null);
 
-  const addBoxWithNameAndAmount = (name, amount) => {
-    console.log(`Preparing to add box with name: ${name}, amount: ${amount}`);
+  const addBoxWithNameAndAmount = (name, amount, shape = 'rectangle') => {
+    console.log(`Preparing to add box with name: ${name}, amount: ${amount}, shape: ${shape}`);
     // Set pending stock data and enable add mode
-    setPendingStockData({ name, amount });
+    setPendingStockData({ name, amount, shape });
     setCurrentMode('add');
     // No alert - we'll use a custom cursor instead
   };
@@ -657,7 +677,8 @@ const PaperCanvas = () => {
       id: maxId + 1,
       name: pendingStockData.name,
       type: 'stock',
-      amount: pendingStockData.amount,
+      shape: pendingStockData.shape || 'rectangle',
+      amount: pendingStockData.shape === 'circle' ? '∞' : pendingStockData.amount,
       position: {
         x: x,
         y: y
@@ -857,7 +878,41 @@ const PaperCanvas = () => {
     if (connectionData) {
       connectionGroup.connectionData = connectionData;
     }
+    
+    // Add click handler for connection selection
+    connectionGroup.onMouseDown = (event) => {
+      if (currentMode === 'edit' && editMode === 'connection') {
+        setSelectedConnection(connectionData);
+        setEditingConnection(connectionData ? { ...connectionData } : null);
+        // Clear stock selection when selecting connection
+        setSelectedStock(null);
+        setEditingStock(null);
+        setSelectedBoxId(null);
+      }
+    };
+    
     return connectionGroup;
+  };
+
+  const refreshConnections = (updatedJsonData) => {
+    // Remove existing connections
+    paperState.current.connections.forEach(conn => conn.remove());
+    const newConnections = [];
+    
+    // Recreate connections with updated data
+    if (updatedJsonData.connections) {
+      updatedJsonData.connections.forEach(connData => {
+        const fromStock = paperState.current.boxes.find(box => box.stockId === connData.fromStockId);
+        const toStock = paperState.current.boxes.find(box => box.stockId === connData.toStockId);
+        
+        if (fromStock && toStock) {
+          const connection = createConnection(fromStock, toStock, connData);
+          newConnections.push(connection);
+        }
+      });
+    }
+    
+    paperState.current.connections = newConnections;
   };
 
   const updateConnectionsAfterBoxChange = (newBoxes) => {
@@ -877,7 +932,7 @@ const PaperCanvas = () => {
       const toStockId = newBoxes[i + 1].stockId || (i + 2);
       connectionsData.push({
         id: i + 1,
-        name: `${fromStockName} → ${toStockName}`,
+        name: `${fromStockName} -> ${toStockName}`,
         type: 'feedback_loop',
         fromStockId: fromStockId,
         toStockId: toStockId
@@ -1181,27 +1236,51 @@ const PaperCanvas = () => {
           </select>
           {currentMode === 'add' && (
             <div style={{ marginTop: '10px' }}>
+              <select
+                value={newStockShape}
+                onChange={e => {
+                  setNewStockShape(e.target.value);
+                  if (e.target.value === 'circle') {
+                    setNewStockAmount(0); // Reset amount for infinite stocks
+                  }
+                }}
+                style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+              >
+                <option value="rectangle">Rectangle (Finite Stock)</option>
+                <option value="circle">Circle (Infinite Stock)</option>
+              </select>
               <input
                 type="text"
                 placeholder="Stock Name"
                 value={newStockName}
                 onChange={e => setNewStockName(e.target.value)}
-                style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
+                style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
               />
-              <input
-                type="number"
-                placeholder="Amount"
-                value={newStockAmount}
-                onChange={e => setNewStockAmount(Number(e.target.value))}
-                style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
-              />
+              {newStockShape === 'rectangle' && (
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={newStockAmount}
+                  onChange={e => setNewStockAmount(Number(e.target.value))}
+                  style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+                />
+              )}
+              {newStockShape === 'circle' && (
+                <div style={{ padding: '8px', marginBottom: '6px', backgroundColor: '#e8f5e8', borderRadius: '4px', textAlign: 'center', fontSize: '12px' }}>
+                  Infinite Stock (∞)
+                </div>
+              )}
               <button
                 style={{ width: '100%', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
                 onClick={() => {
-                  if (newStockName && newStockAmount > 0) {
-                    addBoxWithNameAndAmount(newStockName, newStockAmount);
+                  const isValidFinite = newStockShape === 'rectangle' && newStockName && newStockAmount > 0;
+                  const isValidInfinite = newStockShape === 'circle' && newStockName;
+                  
+                  if (isValidFinite || isValidInfinite) {
+                    addBoxWithNameAndAmount(newStockName, newStockAmount, newStockShape);
                     setNewStockName('');
                     setNewStockAmount(0);
+                    setNewStockShape('rectangle');
                   }
                 }}
               >Add Stock</button>
@@ -1209,7 +1288,28 @@ const PaperCanvas = () => {
           )}
           {currentMode === 'edit' && (
             <div style={{ marginTop: '10px' }}>
-              {selectedStock ? (
+              {/* Edit Mode Toggle */}
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ marginRight: '10px', fontWeight: 'bold' }}>Edit Mode:</label>
+                <select 
+                  value={editMode} 
+                  onChange={e => {
+                    setEditMode(e.target.value);
+                    // Clear selections when switching modes
+                    setSelectedStock(null);
+                    setEditingStock(null);
+                    setSelectedBoxId(null);
+                    setSelectedConnection(null);
+                    setEditingConnection(null);
+                  }}
+                  style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
+                >
+                  <option value="stock">Edit Stocks</option>
+                  <option value="connection">Edit Connections</option>
+                </select>
+              </div>
+              
+              {editMode === 'stock' && selectedStock ? (
                 <div>
                   <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffeaa7' }}>
                     <strong>Editing: {selectedStock.name}</strong>
@@ -1287,6 +1387,79 @@ const PaperCanvas = () => {
                   Click on a stock to edit it
                 </div>
               )}
+              
+              {editMode === 'connection' && selectedConnection ? (
+                <div>
+                  <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#e7f3ff', borderRadius: '4px', border: '1px solid #b3d9ff' }}>
+                    <strong>Editing Connection: {selectedConnection.name}</strong>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Connection Name"
+                    value={editingConnection?.name || ''}
+                    onChange={e => setEditingConnection({...editingConnection, name: e.target.value})}
+                    style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
+                  />
+                  <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                    <button
+                      style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                      onClick={() => {
+                        if (editingConnection?.name) {
+                          // Update the JSON data
+                          const updatedJsonData = {
+                            ...jsonData,
+                            connections: jsonData.connections.map(conn => 
+                              conn.id === selectedConnection.id 
+                                ? { ...conn, name: editingConnection.name }
+                                : conn
+                            )
+                          };
+                          setJsonData(updatedJsonData);
+                           setEditorValue(JSON.stringify(updatedJsonData, null, 2));
+                           setSelectedConnection({ ...selectedConnection, name: editingConnection.name });
+                           // Refresh visual connections to update the label
+                           refreshConnections(updatedJsonData);
+                        }
+                      }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      style={{ flex: 1, background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                      onClick={() => {
+                        setSelectedConnection(null);
+                        setEditingConnection(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <button
+                    style={{ width: '100%', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                    onClick={() => {
+                      if (window.confirm(`Remove connection '${selectedConnection.name}'?`)) {
+                        // Remove the connection
+                        const updatedJsonData = {
+                          ...jsonData,
+                          connections: jsonData.connections.filter(conn => conn.id !== selectedConnection.id)
+                        };
+                        setJsonData(updatedJsonData);
+                         setEditorValue(JSON.stringify(updatedJsonData, null, 2));
+                         setSelectedConnection(null);
+                         setEditingConnection(null);
+                         // Refresh visual connections to remove the deleted connection
+                         refreshConnections(updatedJsonData);
+                      }
+                    }}
+                  >
+                    Remove Connection
+                  </button>
+                </div>
+              ) : editMode === 'connection' ? (
+                <div style={{ padding: '10px', textAlign: 'center', color: '#6c757d' }}>
+                  Click on a connection to edit it
+                </div>
+              ) : null}
             </div>
           )}
         </div>

@@ -1,11 +1,13 @@
 // Utility functions for box operations
 
-export const addBox = (jsonData, paper) => {
+export const addBox = (jsonData, paper, stockType = 'rectangle') => {
   const maxId = Math.max(0, ...jsonData.boxes.map(b => b.id || 0));
   const newStock = {
     id: maxId + 1,
     name: `Stock ${maxId + 1}`,
     type: 'stock',
+    shape: stockType, // 'rectangle' for finite stocks, 'circle' for infinite stocks
+    amount: stockType === 'circle' ? '∞' : 0,
     position: {
       x: Math.round(Math.random() * (paper.view.size.width - 50)),
       y: Math.round(Math.random() * (paper.view.size.height - 50))

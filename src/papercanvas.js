@@ -48,6 +48,8 @@ const PaperCanvas = () => {
     // Remove old axes if they exist to prevent duplicates on resize
     paper.project.getItems({ name: 'axis' }).forEach(item => item.remove());
 
+    if (!paper.view) return;
+    
     const origin = new paper.Point(50, paper.view.size.height - 50);
     const viewSize = paper.view.size;
 
@@ -83,21 +85,15 @@ const PaperCanvas = () => {
 
   // Connection tool functions
   const handleConnectionClick = (stockId) => {
-    console.log('handleConnectionClick called with stockId:', stockId);
-    console.log('Current connectionStart:', connectionStart);
     if (!connectionStart) {
       // Start a new connection
-      console.log('Starting new connection with stockId:', stockId);
       setConnectionStart(stockId);
     } else {
       // Complete the connection
-      console.log('Attempting to complete connection from', connectionStart, 'to', stockId);
-      console.log('Creating new connection (including self-connections)');
       createNewConnection(connectionStart, stockId);
       // Switch back to normal mode after creating connection
       setCurrentMode('normal');
       // Reset connection state
-      console.log('Resetting connection state');
       setConnectionStart(null);
       if (tempConnectionLine) {
         tempConnectionLine.remove();
@@ -128,7 +124,7 @@ const PaperCanvas = () => {
       const visualConnection = createConnection(fromStockGroup, toStockGroup, newConnection);
       paperState.current.connections.push(visualConnection);
       setConnections(prev => [...prev, visualConnection]);
-      paper.view.draw();
+      if (paper.view) paper.view.draw();
     }
     // Update jsonData without triggering box recreation
     setJsonData(prev => ({
@@ -137,7 +133,7 @@ const PaperCanvas = () => {
     }));
     
     // Force a re-render to update the JSON editor
-    paper.view.draw();
+    if (paper.view) paper.view.draw();
   };
 
   const cancelConnectionTool = () => {
@@ -164,7 +160,7 @@ const PaperCanvas = () => {
     console.log('Current jsonData:', jsonData);
     try {
       await dbService.saveCanvas(name, jsonData);
-      console.log(`Canvas '${name}' saved successfully`);
+
       if (!availableCanvases.includes(name)) {
         setAvailableCanvases(prev => [...prev, name].sort());
       }
@@ -180,9 +176,9 @@ const PaperCanvas = () => {
         setJsonData(canvasData);
         setEditorValue(JSON.stringify(canvasData, null, 2));
         setCurrentCanvasName(name);
-        console.log(`Canvas '${name}' loaded successfully`);
+
       } else {
-        console.log(`Canvas '${name}' not found`);
+
       }
     } catch (error) {
       console.error('Failed to load canvas:', error);
@@ -214,7 +210,7 @@ const PaperCanvas = () => {
       setAvailableCanvases(prev => [...prev, name].sort());
       setShowNewCanvasDialog(false);
       setNewCanvasName('');
-      console.log(`New canvas '${name}' created successfully`);
+
     } catch (error) {
       console.error('Failed to create new canvas:', error);
       alert('Failed to create new canvas. Please try again.');
@@ -266,7 +262,7 @@ const PaperCanvas = () => {
       paper.setup(canvasRef.current);
       paperInitialized.current = true;
     } else {
-      console.log('Paper.js already initialized, just updating canvas');
+
       // If Paper.js is already initialized, just update the view
     }
 
@@ -376,7 +372,9 @@ const PaperCanvas = () => {
       canvasRef.current.height = newHeight;
       
       // Update Paper.js view size without scaling content
-      paper.view.setViewSize(new paper.Size(newWidth, newHeight));
+      if (paper.view) {
+        paper.view.setViewSize(new paper.Size(newWidth, newHeight));
+      }
       
       // Ensure pixel ratio is maintained
       const pixelRatio = window.devicePixelRatio || 1;
@@ -384,14 +382,16 @@ const PaperCanvas = () => {
       canvasRef.current.style.height = newHeight + 'px';
       canvasRef.current.width = newWidth * pixelRatio;
       canvasRef.current.height = newHeight * pixelRatio;
-      paper.view.setViewSize(new paper.Size(newWidth, newHeight));
+      if (paper.view) {
+        paper.view.setViewSize(new paper.Size(newWidth, newHeight));
+      }
       
       const ctx = canvasRef.current.getContext('2d');
       ctx.scale(pixelRatio, pixelRatio);
       
       updateConnectionsForResize();
       drawAxes();
-      paper.view.draw();
+      if (paper.view) paper.view.draw();
     };
     resizeCanvasRef.current = resizeCanvas;
 
@@ -414,7 +414,7 @@ const PaperCanvas = () => {
     resizeCanvas();
     setTimeout(() => {
       drawAxes();
-      paper.view.draw();
+      if (paper.view) paper.view.draw();
     }, 0);
     window.addEventListener('resize', resizeCanvas);
 
@@ -445,8 +445,8 @@ const PaperCanvas = () => {
     jsonData.boxes.forEach((stockData, index) => {
       const boxWidth = 80;
       const boxHeight = 50; // Increased height to accommodate name and amount
-      const x = stockData.position?.x || Math.random() * (paper.view.size.width - boxWidth);
-      const y = stockData.position?.y || Math.random() * (paper.view.size.height - boxHeight);
+      const x = stockData.position?.x || Math.random() * ((paper.view?.size?.width || 800) - boxWidth);
+      const y = stockData.position?.y || Math.random() * ((paper.view?.size?.height || 600) - boxHeight);
 
       const isSelected = selectedBoxId === stockData.id;
       const isCircle = stockData.shape === 'circle';
@@ -581,7 +581,7 @@ const PaperCanvas = () => {
 
     // Redraw axes and view
     drawAxes();
-    paper.view.draw();
+    if (paper.view) paper.view.draw();
   }, [jsonData?.boxes, selectedBoxId]);
 
   // Handle connections changes separately to avoid recreating boxes
@@ -610,11 +610,12 @@ const PaperCanvas = () => {
     
     paperState.current.connections = newConnections;
     setConnections(newConnections);
-    paper.view.draw();
+    if (paper.view) paper.view.draw();
   }, [jsonData?.connections]);
 
   // Keep editor value in sync with jsonData
   useEffect(() => {
+    console.log("jsonData changed, updating editor value");
     setEditorValue(JSON.stringify(jsonData, null, 2));
   }, [jsonData]);
   
@@ -628,13 +629,13 @@ const PaperCanvas = () => {
         resizeCanvasRef.current();
         // Redraw the canvas with the current data
         drawAxes();
-        paper.view.draw();
+        if (paper.view) paper.view.draw();
       }, 0);
     }
   }, [jsonEditorVisible]);
 
   const addBox = () => {
-    console.log('Adding box');
+
     // Generate a unique stock ID
     const maxId = Math.max(0, ...jsonData.boxes.map(b => b.id || 0));
     const newStock = {
@@ -643,8 +644,8 @@ const PaperCanvas = () => {
       type: 'stock',
       amount: 0,
       position: {
-        x: Math.round(Math.random() * (paper.view.size.width - 50)),
-        y: Math.round(Math.random() * (paper.view.size.height - 50))
+        x: Math.round(Math.random() * ((paper.view?.size?.width || 800) - 50)),
+        y: Math.round(Math.random() * ((paper.view?.size?.height || 600) - 50))
       }
     };
     setJsonData(prev => ({
@@ -660,7 +661,7 @@ const PaperCanvas = () => {
   const [tempConnectionLine, setTempConnectionLine] = useState(null);
 
   const addBoxWithNameAndAmount = (name, amount, shape = 'rectangle') => {
-    console.log(`Preparing to add box with name: ${name}, amount: ${amount}, shape: ${shape}`);
+
     // Set pending stock data and enable add mode
     setPendingStockData({ name, amount, shape });
     setCurrentMode('add');
@@ -670,7 +671,7 @@ const PaperCanvas = () => {
   const placeStockAtPosition = (x, y) => {
     if (!pendingStockData) return;
     
-    console.log(`Adding box at position: (${x}, ${y})`);
+
     // Generate a unique stock ID
     const maxId = Math.max(0, ...jsonData.boxes.map(b => b.id || 0));
     const newStock = {
@@ -727,8 +728,6 @@ const PaperCanvas = () => {
   };
 
   const createSelfConnection = (box, connectionData = null) => {
-    console.log('=== CREATING SELF CONNECTION ===');
-    console.log('Box:', box.stockId, 'position:', box.position);
     
     const boxBounds = box.bounds;
     const boxCenter = box.position;
@@ -772,18 +771,17 @@ const PaperCanvas = () => {
     
     // Add connection name label if provided
     let nameLabel = null;
+    let labelHitBox = null;
     if (connectionData && connectionData.name) {
       const labelPosition = new paper.Point(boxBounds.right + loopRadius, boxCenter.y);
       let displayText = connectionData.name;
-      if (connectionData.deductAmount && connectionData.transferAmount) {
-        if (connectionData.deductAmount === connectionData.transferAmount) {
-          displayText = `${connectionData.name} (${connectionData.transferAmount})`;
-        } else {
-          displayText = `${connectionData.name} (-${connectionData.deductAmount}/+${connectionData.transferAmount})`;
-        }
-      } else if (connectionData.transferAmount) {
-        displayText = `${connectionData.name} (${connectionData.transferAmount})`;
-      }
+      
+      // Default values if not specified - always use Number to ensure we have a valid numeric value
+      const deductAmount = connectionData.deductAmount !== undefined ? Number(connectionData.deductAmount) : 1;
+      const transferAmount = connectionData.transferAmount !== undefined ? Number(connectionData.transferAmount) : 1;
+      
+      // Always show both amounts in the label
+      displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
       nameLabel = new paper.PointText({
         point: labelPosition,
         content: displayText,
@@ -791,27 +789,108 @@ const PaperCanvas = () => {
         fontSize: 12,
         justification: 'center'
       });
+      
+      // Create a dotted bounding box around the text for better hit testing
+      const textBounds = nameLabel.bounds;
+      const padding = 4; // Add some padding around the text
+      labelHitBox = new paper.Path.Rectangle({
+        rectangle: new paper.Rectangle(
+          textBounds.x - padding,
+          textBounds.y - padding,
+          textBounds.width + (padding * 2),
+          textBounds.height + (padding * 2)
+        ),
+        strokeColor: '#cccccc', // Light gray dotted border
+        strokeWidth: 1,
+        dashArray: [2, 2],
+        fillColor: 'transparent'
+      });
     }
     
+    // Add click handler for self-connection selection
+     const handleSelfConnectionSelect = (event) => {
+       if (currentMode === 'edit') {
+         // Use Paper.js hit testing with tolerance for better accuracy
+         const hitPoint = event.point || (event.event && event.event.point);
+         if (hitPoint) {
+           const hitResult = path.hitTest(hitPoint, {
+             stroke: true,
+             tolerance: 10 // Increase tolerance for easier clicking
+           });
+           if (hitResult || path.bounds.contains(hitPoint)) {
+             // Get connectionData from the group that will be created
+             const groupConnectionData = event.target.parent?.connectionData || connectionData;
+             if (groupConnectionData) {
+               // Ensure deductAmount and transferAmount are defined with defaults if missing
+               const enhancedData = {
+                 ...groupConnectionData,
+                 type: 'connection',
+                 deductAmount: groupConnectionData.deductAmount !== undefined ? groupConnectionData.deductAmount : 1,
+                 transferAmount: groupConnectionData.transferAmount !== undefined ? groupConnectionData.transferAmount : 1
+               };
+               console.log("Selected self-connection with enhanced data:", enhancedData);
+               setSelectedItem(enhancedData);
+               setEditingItem(enhancedData);
+             } else {
+               setSelectedItem(null);
+               setEditingItem(null);
+             }
+             setSelectedBoxId(null);
+           }
+         }
+       }
+     };
+    
+    // Simplified handler for direct clicks on arrow and labels
+     const handleDirectSelect = (event) => {
+       if (currentMode === 'edit') {
+         // Get connectionData from the group
+         const groupConnectionData = event.target.parent?.connectionData || connectionData;
+         if (groupConnectionData) {
+           // Ensure deductAmount and transferAmount are defined with defaults if missing
+           const enhancedData = {
+             ...groupConnectionData,
+             type: 'connection',
+             deductAmount: groupConnectionData.deductAmount !== undefined ? groupConnectionData.deductAmount : 1,
+             transferAmount: groupConnectionData.transferAmount !== undefined ? groupConnectionData.transferAmount : 1
+           };
+           console.log("Selected connection with enhanced data:", enhancedData);
+           setSelectedItem(enhancedData);
+           setEditingItem(enhancedData);
+         } else {
+           setSelectedItem(null);
+           setEditingItem(null);
+         }
+         setSelectedBoxId(null);
+       }
+     };
+     
+     path.onMouseDown = handleSelfConnectionSelect;
+     arrowHead.onMouseDown = handleDirectSelect;
+     if (nameLabel) {
+       nameLabel.onMouseDown = handleDirectSelect;
+     }
+     if (labelHitBox) {
+       labelHitBox.onMouseDown = handleDirectSelect;
+     }
+    
     const connectionGroup = nameLabel ? 
-      new paper.Group([path, arrowHead, nameLabel]) : 
+      (labelHitBox ? new paper.Group([path, arrowHead, nameLabel, labelHitBox]) : new paper.Group([path, arrowHead, nameLabel])) : 
       new paper.Group([path, arrowHead]);
     
     if (connectionData) {
       connectionGroup.connectionData = connectionData;
     }
     
+    // Add group handler for fallback
+    connectionGroup.onMouseDown = handleSelfConnectionSelect;
+    
     return connectionGroup;
   };
 
   const createConnection = (box1, box2, connectionData = null) => {
-    console.log('=== CREATING CONNECTION ===');
-    console.log('From box (box1):', box1.stockId, 'position:', box1.position);
-    console.log('To box (box2):', box2.stockId, 'position:', box2.position);
-    
     // Check if this is a self-connection
     const isSelfConnection = box1.stockId === box2.stockId;
-    console.log('Is self-connection:', isSelfConnection);
     
     if (isSelfConnection) {
       return createSelfConnection(box1, connectionData);
@@ -819,23 +898,18 @@ const PaperCanvas = () => {
     
     const end = getEdgePoint(box1, box2); // from box1 (from) to box2 (to)
     const start = getEdgePoint(box2, box1);   // to box2 (to) from box1 (from)
-    console.log('Start point (from):', start.x, start.y);
-    console.log('End point (to):', end.x, end.y);
     
     const arrowSize = 8;
     // Calculate direction and snap to nearest axis (horizontal or vertical only)
     const rawDirection = end.subtract(start);
-    console.log('Raw direction vector:', rawDirection.x, rawDirection.y);
     
     let direction;
     if (Math.abs(rawDirection.x) > Math.abs(rawDirection.y)) {
       // Horizontal direction
       direction = new paper.Point(rawDirection.x > 0 ? 1 : -1, 0);
-      console.log('Arrow direction: HORIZONTAL', direction.x > 0 ? 'RIGHT' : 'LEFT');
     } else {
       // Vertical direction
       direction = new paper.Point(0, rawDirection.y > 0 ? 1 : -1);
-      console.log('Arrow direction: VERTICAL', direction.y > 0 ? 'DOWN' : 'UP');
     }
     const perpendicular = new paper.Point(-direction.y, direction.x);
     // Calculate the base of the arrowhead
@@ -872,18 +946,17 @@ const PaperCanvas = () => {
     });
     // Add feedback loop name label if connection data is provided
     let nameLabel = null;
+    let labelHitBox = null;
     if (connectionData && connectionData.name) {
       const midPoint = start.add(arrowBase).divide(2);
       let displayText = connectionData.name;
-      if (connectionData.deductAmount && connectionData.transferAmount) {
-        if (connectionData.deductAmount === connectionData.transferAmount) {
-          displayText = `${connectionData.name} (${connectionData.transferAmount})`;
-        } else {
-          displayText = `${connectionData.name} (-${connectionData.deductAmount}/+${connectionData.transferAmount})`;
-        }
-      } else if (connectionData.transferAmount) {
-        displayText = `${connectionData.name} (${connectionData.transferAmount})`;
-      }
+      
+      // Default values if not specified - always use Number to ensure we have a valid numeric value
+      const deductAmount = connectionData.deductAmount !== undefined ? Number(connectionData.deductAmount) : 1;
+      const transferAmount = connectionData.transferAmount !== undefined ? Number(connectionData.transferAmount) : 1;
+      
+      // Always show both amounts in the label
+      displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
       nameLabel = new paper.PointText({
         point: midPoint.add(new paper.Point(0, -10)),
         content: displayText,
@@ -891,45 +964,147 @@ const PaperCanvas = () => {
         fontSize: 12,
         justification: 'center'
       });
+      
+      // Create a dotted bounding box around the text for better hit testing
+      const textBounds = nameLabel.bounds;
+      const padding = 4; // Add some padding around the text
+      labelHitBox = new paper.Path.Rectangle({
+         rectangle: new paper.Rectangle(
+           textBounds.x - padding,
+           textBounds.y - padding,
+           textBounds.width + (padding * 2),
+           textBounds.height + (padding * 2)
+         ),
+         strokeColor: '#cccccc', // Light gray dotted border
+         strokeWidth: 1,
+         dashArray: [2, 2],
+         fillColor: 'transparent'
+       });
+    }
+    // Add click handler for connection selection to all relevant items
+    const handleConnectionSelect = (event) => {
+      if (currentMode === 'edit') {
+        // Use Paper.js hit testing with tolerance for better accuracy
+        const hitPoint = event.point || (event.event && event.event.point);
+        if (hitPoint) {
+          const hitResult = path.hitTest(hitPoint, {
+            stroke: true,
+            tolerance: 10 // Increase tolerance for easier clicking
+          });
+          if (hitResult || path.bounds.contains(hitPoint)) {
+            // Get connectionData from the group that will be created
+            const groupConnectionData = event.target.parent?.connectionData || connectionData;
+            
+            if (groupConnectionData) {
+              // Ensure deductAmount and transferAmount have default values if missing
+              const deductAmount = groupConnectionData.deductAmount !== undefined ? 
+                Number(groupConnectionData.deductAmount) : 1;
+                
+              const transferAmount = groupConnectionData.transferAmount !== undefined ? 
+                Number(groupConnectionData.transferAmount) : 1;
+              
+              // Create a properly initialized selection object
+              const selectionData = {
+                ...groupConnectionData,
+                type: 'connection',
+                deductAmount: deductAmount,
+                transferAmount: transferAmount
+              };
+              
+              console.log("Selected connection with initialized values:", selectionData);
+              
+              setSelectedItem(selectionData);
+              setEditingItem(selectionData);
+              setSelectedBoxId(null);
+            }
+          }
+        }
+      }
+    };
+    // Simplified handler for direct clicks on arrow and labels
+    const handleDirectSelect = (event) => {
+      if (currentMode === 'edit') {
+        // Get connectionData from the group
+        const groupConnectionData = event.target.parent?.connectionData || connectionData;
+        
+        if (groupConnectionData) {
+          // Ensure deductAmount and transferAmount have default values if missing
+          const deductAmount = groupConnectionData.deductAmount !== undefined ? 
+            Number(groupConnectionData.deductAmount) : 1;
+            
+          const transferAmount = groupConnectionData.transferAmount !== undefined ? 
+            Number(groupConnectionData.transferAmount) : 1;
+          
+          // Create a properly initialized selection object
+          const selectionData = {
+            ...groupConnectionData,
+            type: 'connection',
+            deductAmount: deductAmount,
+            transferAmount: transferAmount
+          };
+          
+          console.log("Direct selected connection with initialized values:", selectionData);
+          
+          setSelectedItem(selectionData);
+          setEditingItem(selectionData);
+          setSelectedBoxId(null);
+        }
+      }
+    };
+    
+    path.onMouseDown = handleConnectionSelect;
+    arrowHead.onMouseDown = handleDirectSelect;
+    if (nameLabel) {
+      nameLabel.onMouseDown = handleDirectSelect;
+    }
+    if (labelHitBox) {
+      labelHitBox.onMouseDown = handleDirectSelect;
     }
     const connectionGroup = nameLabel ? 
-      new paper.Group([path, arrowHead, nameLabel]) : 
+      (labelHitBox ? new paper.Group([path, arrowHead, nameLabel, labelHitBox]) : new paper.Group([path, arrowHead, nameLabel])) : 
       new paper.Group([path, arrowHead]);
     if (connectionData) {
       connectionGroup.connectionData = connectionData;
     }
-    
-    // Add click handler for connection selection
-    connectionGroup.onMouseDown = (event) => {
-      if (currentMode === 'edit') {
-        setSelectedItem(connectionData ? { ...connectionData, type: 'connection' } : null);
-        setEditingItem(connectionData ? { ...connectionData, type: 'connection' } : null);
-        setSelectedBoxId(null);
-      }
-    };
-    
+    // Optionally, keep group handler for fallback
+    connectionGroup.onMouseDown = handleConnectionSelect;
     return connectionGroup;
   };
 
   const refreshConnections = (updatedJsonData) => {
+    console.log("refreshConnections called with data:", updatedJsonData);
+    
     // Remove existing connections
     paperState.current.connections.forEach(conn => conn.remove());
     const newConnections = [];
     
     // Recreate connections with updated data
     if (updatedJsonData.connections) {
+      console.log("Processing", updatedJsonData.connections.length, "connections");
       updatedJsonData.connections.forEach(connData => {
+        console.log("Creating connection:", connData);
         const fromStock = paperState.current.boxes.find(box => box.stockId === connData.fromStockId);
         const toStock = paperState.current.boxes.find(box => box.stockId === connData.toStockId);
         
         if (fromStock && toStock) {
+          console.log(`Found stock objects - from: ${connData.fromStockId}, to: ${connData.toStockId}`);
           const connection = createConnection(fromStock, toStock, connData);
           newConnections.push(connection);
+        } else {
+          console.warn(`Could not find stock objects for connection - from: ${connData.fromStockId}, to: ${connData.toStockId}`);
         }
       });
     }
     
+    console.log("Created", newConnections.length, "new connections");
     paperState.current.connections = newConnections;
+    setConnections(newConnections);
+    if (paper.view) {
+      console.log("Drawing paper view");
+      paper.view.draw();
+    } else {
+      console.warn("paper.view is not available");
+    }
   };
 
   const runSimulation = () => {
@@ -1039,7 +1214,6 @@ const PaperCanvas = () => {
   };
 
   const updateConnectionsAfterBoxChange = (newBoxes) => {
-    console.log('Updating connections after box change');
     paperState.current.connections.forEach(conn => conn.remove());
     const newConnections = [];
     const connectionsData = [];
@@ -1083,7 +1257,7 @@ const PaperCanvas = () => {
       }),
       connections: prev.connections // preserve names and structure
     }));
-    console.log('New connections:', newConnections.length);
+
   };
 
   const updateConnectionsOnDrag = (draggedBox, boxIndex) => {
@@ -1163,31 +1337,22 @@ const PaperCanvas = () => {
         return; // Skip regular connection logic for self-connections
       }
       
-      console.log('=== UPDATING CONNECTION DURING DRAG ===');
-      console.log('Connection', i, 'from:', connData.fromStockId, 'to:', connData.toStockId);
-      console.log('From box position:', fromBox.position);
-      console.log('To box position:', toBox.position);
+
       
       // Ensure direction is consistent with connection data: from -> to
       const end = getEdgePoint(fromBox, toBox);
       const start = getEdgePoint(toBox, fromBox);
-      console.log('Updated start point (from):', start.x, start.y);
-      console.log('Updated end point (to):', end.x, end.y);
-      
       const arrowSize = 8;
       // Calculate direction and snap to nearest axis (horizontal or vertical only)
       const rawDirection = end.subtract(start);
-      console.log('Updated raw direction vector:', rawDirection.x, rawDirection.y);
       
       let direction;
       if (Math.abs(rawDirection.x) > Math.abs(rawDirection.y)) {
         // Horizontal direction
         direction = new paper.Point(rawDirection.x > 0 ? 1 : -1, 0);
-        console.log('Updated arrow direction: HORIZONTAL', direction.x > 0 ? 'RIGHT' : 'LEFT');
       } else {
         // Vertical direction
         direction = new paper.Point(0, rawDirection.y > 0 ? 1 : -1);
-        console.log('Updated arrow direction: VERTICAL', direction.y > 0 ? 'DOWN' : 'UP');
       }
       const perpendicular = new paper.Point(-direction.y, direction.x);
       const arrowBase = end.subtract(direction.multiply(arrowSize));
@@ -1228,7 +1393,7 @@ const PaperCanvas = () => {
         nameLabel.point = midPoint.add(new paper.Point(0, -10));
       }
     });
-    paper.view.draw();
+    if (paper.view) paper.view.draw();
   };
 
   // Toolbox rendering function
@@ -1421,25 +1586,32 @@ const PaperCanvas = () => {
                   <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffeaa7' }}>
                     <strong>Editing: {selectedItem.name}</strong>
                   </div>
-                  <input
-                    type="text"
-                    placeholder="Stock Name"
-                    value={editingItem?.name || ''}
-                    onChange={e => setEditingItem({...editingItem, name: e.target.value})}
-                    style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Amount"
-                    value={editingItem?.amount || 0}
-                    onChange={e => setEditingItem({...editingItem, amount: Number(e.target.value)})}
-                    style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
-                  />
+                  <div style={{ marginBottom: '6px' }}>
+                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Stock Name:</label>
+                    <input
+                      type="text"
+                      placeholder="Enter stock name"
+                      value={editingItem?.name || ''}
+                      onChange={e => setEditingItem({...editingItem, name: e.target.value})}
+                      style={{ width: '70%', padding: '4px' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: '6px' }}>
+                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Amount:</label>
+                    <input
+                      type="number"
+                      placeholder="Enter amount"
+                      value={editingItem?.amount || 0}
+                      onChange={e => setEditingItem({...editingItem, amount: Number(e.target.value)})}
+                      style={{ width: '70%', padding: '4px' }}
+                    />
+                  </div>
                   <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
                     <button
                       style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
                       onClick={() => {
-                        if (editingItem?.name && editingItem?.amount > 0) {
+                        if (editingItem?.name && editingItem?.name.trim() !== '' && 
+                            typeof editingItem?.amount === 'number' && editingItem?.amount > 0) {
                           // Update the JSON data
                           const updatedJsonData = {
                             ...jsonData,
@@ -1453,6 +1625,9 @@ const PaperCanvas = () => {
                           setEditorValue(JSON.stringify(updatedJsonData, null, 2));
                           setSelectedItem({ ...selectedItem, name: editingItem.name, amount: editingItem.amount });
                           setEditingItem({ ...editingItem });
+                          alert(`Stock '${editingItem.name}' has been saved successfully!`);
+                        } else {
+                          alert('Please enter a valid stock name and amount greater than 0.');
                         }
                       }}
                     >
@@ -1495,51 +1670,119 @@ const PaperCanvas = () => {
                   <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#e7f3ff', borderRadius: '4px', border: '1px solid #b3d9ff' }}>
                     <strong>Editing Connection: {selectedItem.name}</strong>
                   </div>
-                  <input
-                    type="text"
-                    placeholder="Connection Name"
-                    value={editingItem?.name || ''}
-                    onChange={e => setEditingItem({...editingItem, name: e.target.value})}
-                    style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Deduct Amount"
-                    value={editingItem?.deductAmount ?? 1}
-                    onChange={e => setEditingItem({...editingItem, deductAmount: Number(e.target.value)})}
-                    style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
-                    min="0"
-                    step="0.1"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Transfer Amount"
-                    value={editingItem?.transferAmount ?? 1}
-                    onChange={e => setEditingItem({...editingItem, transferAmount: Number(e.target.value)})}
-                    style={{ width: '70%', marginBottom: '6px', padding: '4px' }}
-                    min="0"
-                    step="0.1"
-                  />
+                  <div style={{ marginBottom: '6px' }}>
+                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Connection Name:</label>
+                    <input
+                      type="text"
+                      placeholder="Enter connection name"
+                      value={editingItem?.name || ''}
+                      onChange={e => setEditingItem({...editingItem, name: e.target.value})}
+                      style={{ width: '70%', padding: '4px' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: '6px' }}>
+                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Deduct Amount:</label>
+                    <input
+                      type="number"
+                      placeholder="Amount to deduct from source"
+                      value={editingItem?.deductAmount ?? 1}
+                      onChange={e => setEditingItem({...editingItem, deductAmount: Number(e.target.value)})}
+                      style={{ width: '70%', padding: '4px' }}
+                      min="0"
+                      step="0.1"
+                    />
+                  </div>
+                  <div style={{ marginBottom: '6px' }}>
+                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Transfer Amount:</label>
+                    <input
+                      type="number"
+                      placeholder="Amount to add to destination"
+                      value={editingItem?.transferAmount ?? 1}
+                      onChange={e => setEditingItem({...editingItem, transferAmount: Number(e.target.value)})}
+                      style={{ width: '70%', padding: '4px' }}
+                      min="0"
+                      step="0.1"
+                    />
+                  </div>
                   <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
                     <button
                       style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
                       onClick={() => {
-                        if (editingItem?.name && editingItem?.deductAmount >= 0 && editingItem?.transferAmount >= 0) {
-                          // Update the JSON data
+                        console.log("Connection Save button clicked");
+                        console.log("editingItem:", editingItem);
+                        console.log("selectedItem:", selectedItem);
+                        console.log("jsonData.connections:", jsonData.connections);
+                        
+                        // Safeguard: ensure editingItem has the right properties with numeric values
+                        const safeEditingItem = {
+                          ...editingItem,
+                          name: editingItem?.name || "Unnamed Connection",
+                          deductAmount: Number(editingItem?.deductAmount) || 1,
+                          transferAmount: Number(editingItem?.transferAmount) || 1
+                        };
+                        console.log("Safe editing item with defaults:", safeEditingItem);
+                        
+                        if (safeEditingItem.name && safeEditingItem.name.trim() !== '' && 
+                            typeof safeEditingItem.deductAmount === 'number' && safeEditingItem.deductAmount >= 0 && 
+                            typeof safeEditingItem.transferAmount === 'number' && safeEditingItem.transferAmount >= 0) {
+                          console.log("Connection validation passed, saving changes...");
+                          
+                          // Update the JSON data using the safe values we created
                           const updatedJsonData = {
                             ...jsonData,
-                            connections: jsonData.connections.map(conn => 
-                              conn.id === selectedItem.id 
-                                ? { ...conn, name: editingItem.name, deductAmount: editingItem.deductAmount, transferAmount: editingItem.transferAmount }
-                                : conn
-                            )
+                            connections: jsonData.connections.map(conn => {
+                              console.log("Comparing connection ID:", conn.id, "with selected ID:", selectedItem.id);
+                              if (conn.id === selectedItem.id) {
+                                console.log("Found matching connection to update");
+                                return { 
+                                  ...conn, 
+                                  name: safeEditingItem.name, 
+                                  deductAmount: safeEditingItem.deductAmount, 
+                                  transferAmount: safeEditingItem.transferAmount 
+                                };
+                              }
+                              return conn;
+                            })
                           };
+                          
+                          console.log("Updated JSON data:", updatedJsonData);
+                          
+                          // First update the selected item to show changes immediately in the UI
+                          setSelectedItem({ 
+                            ...selectedItem, 
+                            name: safeEditingItem.name, 
+                            deductAmount: safeEditingItem.deductAmount, 
+                            transferAmount: safeEditingItem.transferAmount 
+                          });
+                          
+                          // Update the editing item as well with the safe values
+                          setEditingItem({ 
+                            ...editingItem, 
+                            name: safeEditingItem.name, 
+                            deductAmount: safeEditingItem.deductAmount, 
+                            transferAmount: safeEditingItem.transferAmount 
+                          });
+                          
+                          // Then update the JSON data which will trigger both refreshes
                           setJsonData(updatedJsonData);
+                          
+                          // Manually trigger the editor update for immediate feedback
                           setEditorValue(JSON.stringify(updatedJsonData, null, 2));
-                          setSelectedItem({ ...selectedItem, name: editingItem.name, deductAmount: editingItem.deductAmount, transferAmount: editingItem.transferAmount });
-                          setEditingItem({ ...editingItem });
-                          // Refresh visual connections to update the label
+                          
+                          // Immediately update the connection label to reflect the new values
+                          console.log("Refreshing connections to update visuals");
                           refreshConnections(updatedJsonData);
+                          
+                          // Clear selection after saving
+                          setSelectedItem(null);
+                          console.log("Connection saved successfully");
+                        } else {
+                          console.error("Validation failed:", {
+                            name: safeEditingItem.name,
+                            deductAmount: safeEditingItem.deductAmount,
+                            transferAmount: safeEditingItem.transferAmount
+                          });
+                          alert('Please fill in all fields with valid values before saving. Values must be valid numbers.');
                         }
                       }}
                     >
@@ -1682,7 +1925,7 @@ const PaperCanvas = () => {
                   tempLine.strokeWidth = 2;
                   tempLine.dashArray = [5, 5];
                   setTempConnectionLine(tempLine);
-                  paper.view.draw();
+                  if (paper.view) paper.view.draw();
                 }
               }
             }}
@@ -1814,6 +2057,18 @@ const PaperCanvas = () => {
                 setEditorValue(value);
                 try {
                   const parsedValue = JSON.parse(value);
+                  
+                  // Ensure connections have deductAmount and transferAmount properties
+                  if (parsedValue.connections) {
+                    parsedValue.connections = parsedValue.connections.map(conn => {
+                      return {
+                        ...conn,
+                        deductAmount: conn.deductAmount !== undefined ? Number(conn.deductAmount) : 1,
+                        transferAmount: conn.transferAmount !== undefined ? Number(conn.transferAmount) : 1
+                      };
+                    });
+                  }
+                  
                   setJsonData(parsedValue);
                 } catch (error) {
                   // Don't update if JSON is invalid

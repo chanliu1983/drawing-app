@@ -69,9 +69,17 @@ export const createConnection = (box1, box2, connectionData, paper, getEdgePoint
   let nameLabel = null;
   if (connectionData && connectionData.name) {
     const midPoint = start.add(arrowBase).divide(2);
+    
+    // Create display text with amounts
+    const deductAmount = connectionData.deductAmount !== undefined ? Number(connectionData.deductAmount) : 1;
+    const transferAmount = connectionData.transferAmount !== undefined ? Number(connectionData.transferAmount) : 1;
+    
+    // Always display both amounts
+     const displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
+    
     nameLabel = new paper.PointText({
       point: midPoint.add(new paper.Point(0, -10)),
-      content: connectionData.name,
+      content: displayText,
       fillColor: 'black',
       fontSize: 12,
       justification: 'center'

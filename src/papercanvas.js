@@ -495,10 +495,10 @@ const PaperCanvas = () => {
 
       stockGroup.onMouseDown = (event) => {
         // Use a function to get current mode to avoid closure issues
-        const getCurrentMode = () => {
-          const modeSelect = document.querySelector('select[value]');
-          return modeSelect ? modeSelect.value : 'normal';
-        };
+    const getCurrentMode = () => {
+      const modeSelect = document.querySelector('#mode-select');
+      return modeSelect ? modeSelect.value : 'normal';
+    };
         if (getCurrentMode() === 'connect') {
           // Disable dragging in connect mode
           return;
@@ -515,7 +515,7 @@ const PaperCanvas = () => {
       stockGroup.onMouseDrag = (event) => {
         // Use a function to get current mode to avoid closure issues
         const getCurrentMode = () => {
-          const modeSelect = document.querySelector('select[value]');
+          const modeSelect = document.querySelector('#mode-select');
           return modeSelect ? modeSelect.value : 'normal';
         };
         if (getCurrentMode() === 'connect') {
@@ -533,7 +533,7 @@ const PaperCanvas = () => {
       stockGroup.onMouseUp = (event) => {
         // Use a function to get current mode to avoid closure issues
         const getCurrentMode = () => {
-          const modeSelect = document.querySelector('select[value]');
+          const modeSelect = document.querySelector('#mode-select');
           return modeSelect ? modeSelect.value : 'normal';
         };
         if (getCurrentMode() === 'connect') {
@@ -809,7 +809,13 @@ const PaperCanvas = () => {
     
     // Add click handler for self-connection selection
      const handleSelfConnectionSelect = (event) => {
-       if (currentMode === 'edit') {
+      // Use a function to get current mode to avoid closure issues
+      const getCurrentMode = () => {
+        const modeSelect = document.querySelector('#mode-select');
+        return modeSelect ? modeSelect.value : 'normal';
+      };
+      console.log('Self-connection clicked, current mode:', getCurrentMode());
+      if (getCurrentMode() === 'edit') {
          // Use Paper.js hit testing with tolerance for better accuracy
          const hitPoint = event.point || (event.event && event.event.point);
          if (hitPoint) {
@@ -820,6 +826,8 @@ const PaperCanvas = () => {
            if (hitResult || path.bounds.contains(hitPoint)) {
              // Get connectionData from the group that will be created
              const groupConnectionData = event.target.parent?.connectionData || connectionData;
+             console.log('Self-connection groupConnectionData:', groupConnectionData);
+             console.log('Self-connection connectionData fallback:', connectionData);
              if (groupConnectionData) {
                // Ensure deductAmount and transferAmount are defined with defaults if missing
                const enhancedData = {
@@ -843,7 +851,12 @@ const PaperCanvas = () => {
     
     // Simplified handler for direct clicks on arrow and labels
      const handleDirectSelect = (event) => {
-       if (currentMode === 'edit') {
+       // Use a function to get current mode to avoid closure issues
+       const getCurrentMode = () => {
+         const modeSelect = document.querySelector('#mode-select');
+         return modeSelect ? modeSelect.value : 'normal';
+       };
+       if (getCurrentMode() === 'edit') {
          // Get connectionData from the group
          const groupConnectionData = event.target.parent?.connectionData || connectionData;
          if (groupConnectionData) {
@@ -983,7 +996,12 @@ const PaperCanvas = () => {
     }
     // Add click handler for connection selection to all relevant items
     const handleConnectionSelect = (event) => {
-      if (currentMode === 'edit') {
+      // Use a function to get current mode to avoid closure issues
+      const getCurrentMode = () => {
+        const modeSelect = document.querySelector('#mode-select');
+        return modeSelect ? modeSelect.value : 'normal';
+      };
+      if (getCurrentMode() === 'edit') {
         // Use Paper.js hit testing with tolerance for better accuracy
         const hitPoint = event.point || (event.event && event.event.point);
         if (hitPoint) {
@@ -1117,8 +1135,8 @@ const PaperCanvas = () => {
     jsonData.connections.forEach(connection => {
       const fromStock = updatedBoxes.find(box => box.id === connection.fromStockId);
       const toStock = updatedBoxes.find(box => box.id === connection.toStockId);
-      const deductAmount = connection.deductAmount || 1;
-      const transferAmount = connection.transferAmount || 1;
+      const deductAmount = connection.deductAmount !== undefined && connection.deductAmount !== null ? connection.deductAmount : 1;
+      const transferAmount = connection.transferAmount !== undefined && connection.transferAmount !== null ? connection.transferAmount : 1;
       
       if (fromStock && toStock) {
         // Only transfer if source stock has enough (unless it's infinite)
@@ -1717,8 +1735,8 @@ const PaperCanvas = () => {
                         const safeEditingItem = {
                           ...editingItem,
                           name: editingItem?.name || "Unnamed Connection",
-                          deductAmount: Number(editingItem?.deductAmount) || 1,
-                          transferAmount: Number(editingItem?.transferAmount) || 1
+                          deductAmount: editingItem?.deductAmount !== undefined && editingItem?.deductAmount !== null && editingItem?.deductAmount !== '' ? Number(editingItem.deductAmount) : 1,
+                          transferAmount: editingItem?.transferAmount !== undefined && editingItem?.transferAmount !== null && editingItem?.transferAmount !== '' ? Number(editingItem.transferAmount) : 1
                         };
                         console.log("Safe editing item with defaults:", safeEditingItem);
                         

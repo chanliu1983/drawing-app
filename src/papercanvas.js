@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import paper from 'paper';
 import SplitPane from 'react-split-pane';
 import Editor from '@monaco-editor/react';
@@ -638,25 +638,6 @@ const PaperCanvas = () => {
     }
   }, [jsonEditorVisible]);
 
-  const addBox = () => {
-
-    // Generate a unique stock ID
-    const maxId = Math.max(0, ...jsonData.boxes.map(b => b.id || 0));
-    const newStock = {
-      id: maxId + 1,
-      name: `Stock ${maxId + 1}`,
-      type: 'stock',
-      amount: 0,
-      position: {
-        x: Math.round(Math.random() * ((paper.view?.size?.width || 800) - 50)),
-        y: Math.round(Math.random() * ((paper.view?.size?.height || 600) - 50))
-      }
-    };
-    setJsonData(prev => ({
-      ...prev,
-      boxes: [...prev.boxes, newStock]
-    }));
-  };
   
   // Mode system - only one mode can be active at a time
   const [currentMode, setCurrentMode] = useState('normal'); // 'normal', 'add', 'edit', 'connect'

@@ -606,7 +606,7 @@ const PaperCanvas = () => {
       // Handle stocks with simulation amounts
       else if (stockData.simulationAmount !== undefined) {
         const simAmount = typeof stockData.simulationAmount === 'number' ?
-          stockData.simulationAmount : stockData.simulationAmount;
+          stockData.simulationAmount.toFixed(3) : parseFloat(stockData.simulationAmount).toFixed(3);
         displayText = `${stockName}\n${simAmount} / ${stockData.amount}`;
         
         // Highlight changed amounts
@@ -1280,6 +1280,109 @@ const PaperCanvas = () => {
     }
   };
 
+  const logSimulationStep = () => {
+    console.log("--- Logging Simulation Step ---");
+
+    const initialAmounts = {};
+    jsonData.boxes.forEach(box => {
+      initialAmounts[box.id] = box.amount || 0;
+    });
+
+    // Log initial state
+    console.log("Initial Simulation Amounts:", initialAmounts);
+
+    const connections = jsonData.connections || [];
+
+    // Group connections by type for ordered processing
+    const outflowFromCircles = connections.filter(conn => {
+      const fromBox = jsonData.boxes.find(b => b.id === conn.from); 
+      return fromBox && fromBox.shape === 'circle';
+    });
+
+    const inflowToCircles = connections.filter(conn => {
+      const toBox = jsonData.boxes.find(b => b.id === conn.to);
+      return toBox && toBox.shape === 'circle';
+    });
+
+    const otherConnections = connections.filter(conn => {
+      const fromBox = jsonData.boxes.find(b => b.id === conn.from);
+      const toBox = jsonData.boxes.find(b => b.id === conn.to);
+      return fromBox && toBox && fromBox.shape !== 'circle' && toBox.shape !== 'circle';
+    });
+
+    const processConnection = (conn, type) => {
+      console.log(`\nProcessing ${type} connection:`, conn.name);
+      const fromStock = jsonData.boxes.find(b => b.id === conn.from);
+      const toStock = jsonData.boxes.find(b => b.id === conn.to);
+
+      if (!fromStock || !toStock) {
+        console.log("Skipping connection due to missing stock.");
+        return;
+      }
+
+      const fromStockAmount = initialAmounts[fromStock.id] || 0;
+      const toStockAmount = initialAmounts[toStock.id] || 0;
+      console.log(`Before - ${fromStock.name}: ${fromStockAmount}, ${toStock.name}: ${toStockAmount}`);
+
+      let actualDeductAmount = 0;
+      let actualTransferAmount = 0;
+
+      // Special handling for self-connections
+      if (conn.from === conn.to) {
+        if (typeof conn.transferAmount === 'string' && conn.transferAmount.includes('%')) {
+          const percent = parseFloat(conn.transferAmount) / 100;
+          actualTransferAmount = fromStockAmount * percent;
+        } else {
+          actualTransferAmount = conn.transferAmount;
+        }
+        console.log(`Self-connection on ${fromStock.name}. Transfer amount: ${actualTransferAmount}`);
+        console.log(`After - ${fromStock.name}: ${fromStockAmount + actualTransferAmount}`);
+        return;
+      }
+
+      // Deduction logic
+      if (typeof conn.deductAmount === 'string' && conn.deductAmount.includes('%')) {
+        const percent = parseFloat(conn.deductAmount) / 100;
+        actualDeductAmount = fromStockAmount * percent;
+      } else {
+        actualDeductAmount = conn.deductAmount;
+      }
+
+      const isDeductZero = (typeof conn.deductAmount === 'string' && conn.deductAmount.replace('%', '').trim() === '0') || Number(conn.deductAmount) === 0;
+      if (!fromStock.isInfinite && !isDeductZero) {
+        actualDeductAmount = Math.min(fromStockAmount, actualDeductAmount);
+      }
+      console.log(`Deducting ${actualDeductAmount} from ${fromStock.name}`);
+
+      // Transfer logic
+      if (conn.deductEqualsTransfer) {
+        actualTransferAmount = actualDeductAmount;
+      } else if (typeof conn.transferAmount === 'string' && conn.transferAmount.includes('%')) {
+        const percent = parseFloat(conn.transferAmount) / 100;
+        actualTransferAmount = actualDeductAmount * percent;
+      } else {
+        actualTransferAmount = conn.transferAmount;
+      }
+      console.log(`Transferring ${actualTransferAmount} to ${toStock.name}`);
+
+      const newFromAmount = fromStock.isInfinite ? fromStockAmount : fromStockAmount - actualDeductAmount;
+      const newToAmount = toStockAmount + actualTransferAmount;
+
+      console.log(`After - ${fromStock.name}: ${newFromAmount}, ${toStock.name}: ${newToAmount}`);
+    };
+
+    console.log("--- Processing Outflow from Circles ---");
+    outflowFromCircles.forEach(conn => processConnection(conn, "Outflow"));
+
+    console.log("--- Processing Stock-to-Stock Connections ---");
+    otherConnections.forEach(conn => processConnection(conn, "Stock-to-Stock"));
+
+    console.log("--- Processing Inflow to Circles ---");
+    inflowToCircles.forEach(conn => processConnection(conn, "Inflow"));
+
+    console.log("--- End of Simulation Step Log ---");
+  };
+
   const runSimulation = () => {
     if (!jsonData || !jsonData.connections || !jsonData.boxes) return;
     
@@ -1386,20 +1489,24 @@ const PaperCanvas = () => {
               actualDeductAmount = Number(deductAmountRaw);
             }
             
-            // Check if source has sufficient amount for deduction
-            const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
-              fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
-            
-            if (currentAmount < actualDeductAmount) {
-              // If insufficient amount, limit deduction to available amount
-              actualDeductAmount = Math.max(0, currentAmount);
-              console.log(`Insufficient amount in ${fromStock.name}. Limited deduction to ${actualDeductAmount}`);
-            }
-            
-            // Skip this connection entirely if no amount can be deducted
-            if (actualDeductAmount <= 0) {
-              console.log(`Connection from ${fromStock.name} to ${toStock.name} is inactive - no deductible amount`);
-              return; // Skip this connection
+            // Check if source has sufficient amount for deduction, unless deduct amount is zero
+            const isDeductZero = (typeof deductAmountRaw === 'string' && deductAmountRaw.replace('%', '').trim() === '0') || Number(deductAmountRaw) === 0;
+
+            if (!isDeductZero) {
+              const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
+                fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+              
+              if (currentAmount < actualDeductAmount) {
+                // If insufficient amount, limit deduction to available amount
+                actualDeductAmount = Math.max(0, currentAmount);
+                console.log(`Insufficient amount in ${fromStock.name}. Limited deduction to ${actualDeductAmount}`);
+              }
+              
+              // Skip this connection entirely if no amount can be deducted
+              if (actualDeductAmount <= 0) {
+                console.log(`Connection from ${fromStock.name} to ${toStock.name} is inactive - no deductible amount`);
+                return; // Skip this connection
+              }
             }
           }
           
@@ -1986,9 +2093,11 @@ const PaperCanvas = () => {
                         onChange={e => {
                           const value = e.target.value;
                           const isPercent = document.getElementById('deduct-percent-checkbox').checked;
+                          const newDeductAmount = isPercent ? `${value}%` : Number(value);
                           setEditingItem({
                             ...editingItem, 
-                            deductAmount: isPercent ? `${value}%` : Number(value)
+                            deductAmount: newDeductAmount,
+                            transferAmount: editingItem?.deductEqualsTransfer ? newDeductAmount : editingItem?.transferAmount
                           });
                         }}
                         style={{ width: '60%', padding: '4px' }}
@@ -2016,11 +2125,28 @@ const PaperCanvas = () => {
                     </div>
                   </div>
                   <div style={{ marginBottom: '6px' }}>
+                    <input
+                      id="deduct-equals-transfer-checkbox"
+                      type="checkbox"
+                      checked={editingItem?.deductEqualsTransfer ?? false}
+                      onChange={e => {
+                        const isChecked = e.target.checked;
+                        setEditingItem({
+                          ...editingItem,
+                          deductEqualsTransfer: isChecked,
+                          transferAmount: isChecked ? editingItem.deductAmount : editingItem.transferAmount
+                        });
+                      }}
+                    />
+                    <label htmlFor="deduct-equals-transfer-checkbox" style={{ fontSize: '12px' }}>Deduct equals Transfer</label>
+                  </div>
+                  <div style={{ marginBottom: '6px' }}>
                     <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Transfer Amount:</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                       <input
                         type="number"
                         placeholder="Amount to add to destination"
+                        disabled={editingItem?.deductEqualsTransfer}
                         value={typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%') 
                           ? editingItem.transferAmount.replace('%', '') 
                           : editingItem?.transferAmount ?? 1}
@@ -2040,6 +2166,7 @@ const PaperCanvas = () => {
                         <input
                           id="transfer-percent-checkbox"
                           type="checkbox"
+                          disabled={editingItem?.deductEqualsTransfer}
                           checked={typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%')}
                           onChange={e => {
                             const isPercent = e.target.checked;
@@ -2073,7 +2200,8 @@ const PaperCanvas = () => {
                           deductAmount: editingItem?.deductAmount !== undefined && editingItem?.deductAmount !== null && editingItem?.deductAmount !== '' ? 
                             editingItem.deductAmount : 1,
                           transferAmount: editingItem?.transferAmount !== undefined && editingItem?.transferAmount !== null && editingItem?.transferAmount !== '' ? 
-                            editingItem.transferAmount : 1
+                            editingItem.transferAmount : 1,
+                          deductEqualsTransfer: editingItem?.deductEqualsTransfer ?? false
                         };
                         console.log("Safe editing item with defaults:", safeEditingItem);
                         
@@ -2106,7 +2234,8 @@ const PaperCanvas = () => {
                                   ...conn, 
                                   name: safeEditingItem.name, 
                                   deductAmount: safeEditingItem.deductAmount, 
-                                  transferAmount: safeEditingItem.transferAmount 
+                                  transferAmount: safeEditingItem.transferAmount, 
+                                  deductEqualsTransfer: safeEditingItem.deductEqualsTransfer 
                                 };
                               }
                               return conn;
@@ -2120,7 +2249,8 @@ const PaperCanvas = () => {
                             ...selectedItem, 
                             name: safeEditingItem.name, 
                             deductAmount: safeEditingItem.deductAmount, 
-                            transferAmount: safeEditingItem.transferAmount 
+                            transferAmount: safeEditingItem.transferAmount, 
+                            deductEqualsTransfer: safeEditingItem.deductEqualsTransfer 
                           });
                           
                           // Update the editing item as well with the safe values
@@ -2128,7 +2258,8 @@ const PaperCanvas = () => {
                             ...editingItem, 
                             name: safeEditingItem.name, 
                             deductAmount: safeEditingItem.deductAmount, 
-                            transferAmount: safeEditingItem.transferAmount 
+                            transferAmount: safeEditingItem.transferAmount, 
+                            deductEqualsTransfer: safeEditingItem.deductEqualsTransfer 
                           });
                           
                           // Then update the JSON data which will trigger both refreshes
@@ -2227,6 +2358,14 @@ const PaperCanvas = () => {
                   }}
                 >
                   Run 1 Step
+                </button>
+                <button
+                  style={{ flex: 1, background: '#ffc107', color: 'black', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
+                  onClick={() => {
+                    logSimulationStep();
+                  }}
+                >
+                  Log Sim Step
                 </button>
                 <button
                   style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
@@ -2792,7 +2931,7 @@ const PaperCanvas = () => {
                         `Found stock ${stock.name} with amount ${stock.simulationAmount}` : 
                         `Stock not found for ID ${selectedStockForPlot}`);
                         
-                      return stock ? Number(stock.simulationAmount) : 0;
+                      return stock ? Number(parseFloat(stock.simulationAmount).toFixed(3)) : 0;
                     }),
                     borderColor: 'rgb(75, 192, 192)',
                     backgroundColor: 'rgba(75, 192, 192, 0.2)',

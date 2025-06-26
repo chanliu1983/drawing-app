@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import paper from 'paper';
-import SplitPane from 'react-split-pane';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import Editor from '@monaco-editor/react';
 // Removed initialData import - now loading from database
 import dbService from './dbService';
@@ -1332,6 +1332,16 @@ const PaperCanvas = () => {
       const fromStock = updatedBoxes.find(box => box.id === connection.fromStockId);
       const toStock = updatedBoxes.find(box => box.id === connection.toStockId);
       
+      // Check if this is a self-connection
+      const isSelfConnection = connection.fromStockId === connection.toStockId;
+      console.log(`Processing connection ${connection.name} (ID: ${connection.id})`, {
+        fromId: connection.fromStockId, 
+        toId: connection.toStockId,
+        isSelfConnection,
+        deductAmount: connection.deductAmount,
+        transferAmount: connection.transferAmount
+      });
+      
       // Preserve the original format (number or percentage string)
       const deductAmountRaw = connection.deductAmount !== undefined && connection.deductAmount !== null ? 
         connection.deductAmount : 1;
@@ -1342,6 +1352,15 @@ const PaperCanvas = () => {
         // Handle special cases for infinite stocks (circle shape)
         const isFromInfinite = fromStock.shape === 'circle';
         const isToInfinite = toStock.shape === 'circle';
+        
+        // Log for self-connections
+        if (connection.fromStockId === connection.toStockId) {
+          console.log(`Applying self-connection on stock ${fromStock.name} (ID: ${fromStock.id})`, {
+            currentAmount: fromStock.simulationAmount,
+            deductAmountRaw,
+            transferAmountRaw
+          });
+        }
         
         // Calculate actual deduct amount based on whether it's percentage or fixed
         let actualDeductAmount = 0;
@@ -1396,26 +1415,45 @@ const PaperCanvas = () => {
           }
         }
         
-        // Deduct from source's simulation amount (unless it's infinite)
-        if (!isFromInfinite) {
-          // Make sure simulation amount is a number
-          const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
-            fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+        // Special handling for self-connections
+        if (connection.fromStockId === connection.toStockId) {
+          if (!isFromInfinite) {  // Only process if not infinite
+            // For self-connections, we calculate the net effect (transferAmount - deductAmount)
+            const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
+              fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+              
+            // Net effect calculation
+            const netChange = actualTransferAmount - actualDeductAmount;
             
-          fromStock.simulationAmount = Math.max(0, currentAmount - actualDeductAmount);
+            // Apply net change
+            fromStock.simulationAmount = Math.max(0, currentAmount + netChange);
             
-          console.log(`Deducted ${actualDeductAmount} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`);
-        }
-        
-        // Add to destination's simulation amount (unless it's infinite)
-        if (!isToInfinite) {
-          // Make sure simulation amount is a number
-          const currentAmount = typeof toStock.simulationAmount === 'number' ? 
-            toStock.simulationAmount : parseFloat(toStock.simulationAmount);
-            
-          toStock.simulationAmount = currentAmount + actualTransferAmount;
-            
-          console.log(`Added ${actualTransferAmount} to ${toStock.name}, new amount: ${toStock.simulationAmount}`);
+            console.log(`Self-connection on ${fromStock.name}: Deducted ${actualDeductAmount}, Added ${actualTransferAmount}, Net change: ${netChange}, New amount: ${fromStock.simulationAmount}`);
+          }
+        } else {
+          // Normal connection processing (source and destination are different)
+          
+          // Deduct from source's simulation amount (unless it's infinite)
+          if (!isFromInfinite) {
+            // Make sure simulation amount is a number
+            const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
+              fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+              
+            fromStock.simulationAmount = Math.max(0, currentAmount - actualDeductAmount);
+              
+            console.log(`Deducted ${actualDeductAmount} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`);
+          }
+          
+          // Add to destination's simulation amount (unless it's infinite)
+          if (!isToInfinite) {
+            // Make sure simulation amount is a number
+            const currentAmount = typeof toStock.simulationAmount === 'number' ? 
+              toStock.simulationAmount : parseFloat(toStock.simulationAmount);
+              
+            toStock.simulationAmount = currentAmount + actualTransferAmount;
+              
+            console.log(`Added ${actualTransferAmount} to ${toStock.name}, new amount: ${toStock.simulationAmount}`);
+          }
         }
       }
     });
@@ -1445,6 +1483,15 @@ const PaperCanvas = () => {
     
     // Update the UI with the simulation results
     console.log("Setting JSON data with simulation results:", updatedJsonData);
+    console.log("Simulation amounts for each stock:", 
+      updatedJsonData.boxes.map(box => ({
+        id: box.id,
+        name: box.name,
+        amount: box.amount,
+        simulationAmount: box.simulationAmount
+      }))
+    );
+    
     setJsonData(updatedJsonData);
     // Don't update the editor value to avoid overwriting the original model
     // setEditorValue(JSON.stringify(updatedJsonData, null, 2));
@@ -1456,12 +1503,17 @@ const PaperCanvas = () => {
     const currentStep = simulationSteps + 1;
     const stepData = {
       step: currentStep,
-      stocks: updatedBoxes.map(box => ({
-        id: box.stockId,
-        name: box.stockName,
-        simulationAmount: box.simulationAmount
-      }))
+      stocks: updatedBoxes.map(box => {
+        // Make sure all IDs are stored as strings to match the select element value
+        // The select element always provides values as strings
+        return {
+          id: String(box.id), // Convert ID to string to ensure type consistency with dropdown
+          name: box.name || box.stockName || '',
+          simulationAmount: box.simulationAmount !== undefined ? box.simulationAmount : box.amount
+        };
+      })
     };
+    console.log('Stock data being recorded:', stepData.stocks);
     setSimulationHistory(prev => [...prev, stepData]);
     
     console.log('Recording simulation history step:', currentStep, 'with stocks:', stepData.stocks);
@@ -2335,12 +2387,15 @@ const PaperCanvas = () => {
                     <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold', fontSize: '12px' }}>Select Stock to Plot:</label>
                     <select
                       value={selectedStockForPlot}
-                      onChange={e => setSelectedStockForPlot(e.target.value)}
+                      onChange={e => {
+                        console.log('Selected stock ID from dropdown:', e.target.value);
+                        setSelectedStockForPlot(e.target.value);
+                      }}
                       style={{ width: '100%', padding: '4px', marginBottom: '6px' }}
                     >
                       <option value="">Choose a stock...</option>
-                      {boxes.filter(box => box.stockName && box.stockShape !== 'circle').map(box => (
-                        <option key={box.stockId} value={box.stockId}>{box.stockName}</option>
+                      {jsonData.boxes.filter(box => box.name && box.shape !== 'circle').map(box => (
+                        <option key={box.id} value={String(box.id)}>{box.name}</option>
                       ))}
                     </select>
                   </div>
@@ -2400,15 +2455,12 @@ const PaperCanvas = () => {
           cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='2' ry='2' fill='%234CAF50' fill-opacity='0.7' stroke='%23333' stroke-width='2'/%3E%3Ctext x='16' y='20' font-family='Arial' font-size='12' text-anchor='middle' fill='white'%3ES%3C/text%3E%3C/svg%3E") 16 16, crosshair;
         }
       `}</style>
-      <SplitPane
-        split="vertical"
-        minSize={200}
-        size={jsonEditorVisible ? splitSize : '100vw'}
-        onChange={size => setSplitSize(size)}
+      <PanelGroup
+        direction="horizontal"
         style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh' }}
       >
-        {/* Canvas pane */}
-        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <Panel defaultSize={jsonEditorVisible ? 70 : 100} minSize={30}>
+          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
           <canvas
             ref={canvasRef}
             id="myCanvas"
@@ -2560,10 +2612,13 @@ const PaperCanvas = () => {
             }}
           />
           {renderToolbox()}
-        </div>
-        {/* Editor pane */}
-        {jsonEditorVisible ? (
-          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', zIndex: 2 }}>
+          </div>
+        </Panel>
+        {jsonEditorVisible && (
+          <>
+            <PanelResizeHandle />
+            <Panel defaultSize={30} minSize={20}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', zIndex: 2 }}>
             <Editor
               height="100%"
               language="json"
@@ -2628,9 +2683,11 @@ const PaperCanvas = () => {
                 formatOnType: true
               }}
             />
-          </div>
-        ) : <div />}
-      </SplitPane>
+              </div>
+            </Panel>
+          </>
+        )}
+      </PanelGroup>
       {/* JSON Editor Toggle Button - Positioned at bottom */}
       <button
         onClick={() => {
@@ -2827,7 +2884,7 @@ const PaperCanvas = () => {
               marginBottom: '20px'
             }}>
               <h3 style={{ margin: 0 }}>
-                 Stock Amount Over Time: {boxes.find(box => box.stockId === selectedStockForPlot)?.stockName || 'Unknown'}
+                 Stock Amount Over Time: {jsonData.boxes.find(box => String(box.id) === selectedStockForPlot)?.name || 'Unknown'}
                </h3>
               <button
                 onClick={() => setShowPlotPanel(false)}
@@ -2850,8 +2907,24 @@ const PaperCanvas = () => {
                   datasets: [{
                     label: 'Simulation Amount',
                     data: simulationHistory.map(step => {
-                      const stock = step.stocks.find(s => s.id === selectedStockForPlot);
-                      return stock ? stock.simulationAmount : 0;
+                      // Enhanced debug logging with type information
+                      console.log(`Looking for stock ${selectedStockForPlot} (type: ${typeof selectedStockForPlot}) in step ${step.step}`, {
+                        availableStocks: step.stocks.map(s => `${s.id} (type: ${typeof s.id})`),
+                        selectedStockForPlot,
+                        stocksRaw: step.stocks
+                      });
+                      
+                      // Try both string and number comparison since HTML select values are strings
+                      const stock = step.stocks.find(s => 
+                        s.id === selectedStockForPlot || // Exact match
+                        String(s.id) === String(selectedStockForPlot) // String conversion match
+                      );
+                      
+                      console.log(stock ? 
+                        `Found stock ${stock.name} with amount ${stock.simulationAmount}` : 
+                        `Stock not found for ID ${selectedStockForPlot}`);
+                        
+                      return stock ? Number(stock.simulationAmount) : 0;
                     }),
                     borderColor: 'rgb(75, 192, 192)',
                     backgroundColor: 'rgba(75, 192, 192, 0.2)',

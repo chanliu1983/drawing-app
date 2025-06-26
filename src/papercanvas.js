@@ -1,9 +1,31 @@
-import { useRef, useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import paper from 'paper';
 import SplitPane from 'react-split-pane';
 import Editor from '@monaco-editor/react';
 // Removed initialData import - now loading from database
 import dbService from './dbService';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 
 const PaperCanvas = () => {
@@ -37,6 +59,9 @@ const PaperCanvas = () => {
   // Simulation state
   const [simulationSteps, setSimulationSteps] = useState(0);
   const [targetSteps, setTargetSteps] = useState(1);
+  const [simulationHistory, setSimulationHistory] = useState([]); // Track stock amounts over time
+  const [showPlotPanel, setShowPlotPanel] = useState(false);
+  const [selectedStockForPlot, setSelectedStockForPlot] = useState('');
 
   const paperState = useRef({
     boxes: [],
@@ -612,6 +637,7 @@ const PaperCanvas = () => {
       const stockGroup = new paper.Group([stockBox, textLabel]);
       stockGroup.stockName = stockName;
       stockGroup.stockId = stockData.id;
+      stockGroup.stockShape = stockData.shape;
       stockGroup.position = new paper.Point(x, y);
 
       // Add mode-based interaction logic
@@ -1426,6 +1452,20 @@ const PaperCanvas = () => {
     // Increment simulation step counter
     setSimulationSteps(prev => prev + 1);
     
+    // Record simulation history for plotting
+    const currentStep = simulationSteps + 1;
+    const stepData = {
+      step: currentStep,
+      stocks: updatedBoxes.map(box => ({
+        id: box.stockId,
+        name: box.stockName,
+        simulationAmount: box.simulationAmount
+      }))
+    };
+    setSimulationHistory(prev => [...prev, stepData]);
+    
+    console.log('Recording simulation history step:', currentStep, 'with stocks:', stepData.stocks);
+    
     // Remove the refreshBoxes call - not needed anymore
     // refreshBoxes(updatedJsonData); // REMOVED
   };
@@ -1439,6 +1479,9 @@ const PaperCanvas = () => {
   const resetSimulation = () => {
     // Reset simulation step counter
     setSimulationSteps(0);
+    
+    // Clear simulation history
+    setSimulationHistory([]);
     
     // Reset simulation amounts to original amounts
     if (jsonData && jsonData.boxes) {
@@ -2284,6 +2327,33 @@ const PaperCanvas = () => {
                 Reset Counter
               </button>
               
+
+              {/* Plot Controls */}
+              {simulationHistory.length > 0 && (
+                <div style={{ marginTop: '10px', padding: '8px', backgroundColor: '#f8f9fa', borderRadius: '4px', border: '1px solid #dee2e6' }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold', fontSize: '12px' }}>Select Stock to Plot:</label>
+                    <select
+                      value={selectedStockForPlot}
+                      onChange={e => setSelectedStockForPlot(e.target.value)}
+                      style={{ width: '100%', padding: '4px', marginBottom: '6px' }}
+                    >
+                      <option value="">Choose a stock...</option>
+                      {boxes.filter(box => box.stockName && box.stockShape !== 'circle').map(box => (
+                        <option key={box.stockId} value={box.stockId}>{box.stockName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    style={{ width: '100%', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
+                    onClick={() => setShowPlotPanel(true)}
+                    disabled={!selectedStockForPlot}
+                  >
+                    Show Plot
+                  </button>
+                </div>
+              )}
+              
               <div style={{ fontSize: '11px', color: '#6c757d', textAlign: 'center', marginTop: '8px' }}>
                 Set target steps (1-100) and run simulation
               </div>
@@ -2719,6 +2789,105 @@ const PaperCanvas = () => {
               >
                 Create
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Plot Panel */}
+      {showPlotPanel && selectedStockForPlot && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '20px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            width: '80%',
+            maxWidth: '800px',
+            height: '80%',
+            maxHeight: '600px',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ margin: 0 }}>
+                 Stock Amount Over Time: {boxes.find(box => box.stockId === selectedStockForPlot)?.stockName || 'Unknown'}
+               </h3>
+              <button
+                onClick={() => setShowPlotPanel(false)}
+                style={{
+                  padding: '8px 12px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <Line
+                data={{
+                  labels: simulationHistory.map(step => `Step ${step.step}`),
+                  datasets: [{
+                    label: 'Simulation Amount',
+                    data: simulationHistory.map(step => {
+                      const stock = step.stocks.find(s => s.id === selectedStockForPlot);
+                      return stock ? stock.simulationAmount : 0;
+                    }),
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    tension: 0.1
+                  }]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    title: {
+                      display: true,
+                      text: 'Stock Amount vs Simulation Steps'
+                    },
+                    legend: {
+                      display: true
+                    }
+                  },
+                  scales: {
+                    x: {
+                      display: true,
+                      title: {
+                        display: true,
+                        text: 'Simulation Steps'
+                      }
+                    },
+                    y: {
+                      display: true,
+                      title: {
+                        display: true,
+                        text: 'Amount'
+                      }
+                    }
+                  }
+                }}
+              />
             </div>
           </div>
         </div>

@@ -183,12 +183,27 @@ const PaperCanvas = () => {
     }
   };
 
+  // Helper function to ensure all boxes have simulationAmount initialized
+  const ensureSimulationAmount = (data) => {
+    if (data && data.boxes) {
+      return {
+        ...data,
+        boxes: data.boxes.map(box => ({
+          ...box,
+          simulationAmount: box.simulationAmount !== undefined ? box.simulationAmount : box.amount
+        }))
+      };
+    }
+    return data;
+  };
+
   const loadCanvas = async (name) => {
     try {
       const canvasData = await dbService.loadCanvas(name);
       if (canvasData) {
-        setJsonData(canvasData);
-        setEditorValue(JSON.stringify(canvasData, null, 2));
+        const dataWithSimulation = ensureSimulationAmount(canvasData);
+        setJsonData(dataWithSimulation);
+        setEditorValue(JSON.stringify(dataWithSimulation, null, 2));
         setCurrentCanvasName(name);
 
       } else {
@@ -1218,10 +1233,47 @@ const PaperCanvas = () => {
     if (!jsonData || !jsonData.connections || !jsonData.boxes) return;
     
     // Create a copy of the current stock amounts
-    const updatedBoxes = jsonData.boxes.map(box => ({ ...box }));
+    // Use amount as original, simulationAmount for simulation values
+    const updatedBoxes = jsonData.boxes.map(box => {
+      console.log(`Processing box ${box.name} for simulation:`, {
+        id: box.id,
+        amount: box.amount,
+        simulationAmount: box.simulationAmount
+      });
+      
+      return {
+        ...box,
+        simulationAmount: box.simulationAmount !== undefined ? box.simulationAmount : box.amount // Initialize simulation amount if needed
+      };
+    });
     
-    // Process each connection
-    jsonData.connections.forEach(connection => {
+    // Group connections by type for ordered processing
+    const connections = [...jsonData.connections];
+    const outflowFromCircles = connections.filter(conn => {
+      const fromStock = updatedBoxes.find(box => box.id === conn.fromStockId);
+      return fromStock && fromStock.shape === 'circle';
+    });
+    
+    const inflowToCircles = connections.filter(conn => {
+      const toStock = updatedBoxes.find(box => box.id === conn.toStockId);
+      return toStock && toStock.shape === 'circle';
+    }).filter(conn => {
+      // Exclude connections that are already in outflowFromCircles
+      const fromStock = updatedBoxes.find(box => box.id === conn.fromStockId);
+      return !(fromStock && fromStock.shape === 'circle');
+    });
+    
+    const otherConnections = connections.filter(conn => {
+      const fromStock = updatedBoxes.find(box => box.id === conn.fromStockId);
+      const toStock = updatedBoxes.find(box => box.id === conn.toStockId);
+      return !(fromStock && fromStock.shape === 'circle') && !(toStock && toStock.shape === 'circle');
+    });
+    
+    // Process connections in the specified order: outflow from circles, other connections, inflow to circles
+    const orderedConnections = [...outflowFromCircles, ...otherConnections, ...inflowToCircles];
+    
+    // Process each connection in the ordered sequence
+    orderedConnections.forEach(connection => {
       const fromStock = updatedBoxes.find(box => box.id === connection.fromStockId);
       const toStock = updatedBoxes.find(box => box.id === connection.toStockId);
       
@@ -1236,14 +1288,6 @@ const PaperCanvas = () => {
         const isFromInfinite = fromStock.shape === 'circle';
         const isToInfinite = toStock.shape === 'circle';
         
-        // For connection from circle (infinite) to normal stock:
-        // - No deduction from source (it's infinite)
-        // - Transfer amount is used normally to add to destination
-        
-        // For connection from normal stock to circle (infinite):
-        // - Deduct normally from source
-        // - No addition to destination (it's already infinite)
-        
         // Calculate actual deduct amount based on whether it's percentage or fixed
         let actualDeductAmount = 0;
         if (!isFromInfinite) { // Only calculate deduct amount if source is not infinite
@@ -1251,7 +1295,7 @@ const PaperCanvas = () => {
             // Percentage-based deduction
             const percentageStr = deductAmountRaw.replace('%', '');
             const percentage = parseFloat(percentageStr) / 100;
-            actualDeductAmount = fromStock.amount * percentage;
+            actualDeductAmount = fromStock.simulationAmount * percentage;
           } else {
             // Fixed amount deduction
             actualDeductAmount = Number(deductAmountRaw);
@@ -1267,33 +1311,65 @@ const PaperCanvas = () => {
             const percentage = parseFloat(percentageStr) / 100;
             // For percentage transfers, we base it on the source stock's amount
             // If source is infinite, use a fixed value instead of percentage
-            actualTransferAmount = isFromInfinite ? parseFloat(percentageStr) : fromStock.amount * percentage;
+            actualTransferAmount = isFromInfinite ? parseFloat(percentageStr) : fromStock.simulationAmount * percentage;
           } else {
             // Fixed amount transfer
             actualTransferAmount = Number(transferAmountRaw);
           }
         }
         
-        // Deduct from source (unless it's infinite)
+        // Deduct from source's simulation amount (unless it's infinite)
         if (!isFromInfinite) {
-          fromStock.amount = fromStock.amount - actualDeductAmount;
+          // Make sure simulation amount is a number
+          const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
+            fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+            
+          fromStock.simulationAmount = Math.max(0, currentAmount - actualDeductAmount);
+            
+          console.log(`Deducted ${actualDeductAmount} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`);
         }
         
-        // Add to destination (unless it's infinite)
+        // Add to destination's simulation amount (unless it's infinite)
         if (!isToInfinite) {
-          toStock.amount += actualTransferAmount;
+          // Make sure simulation amount is a number
+          const currentAmount = typeof toStock.simulationAmount === 'number' ? 
+            toStock.simulationAmount : parseFloat(toStock.simulationAmount);
+            
+          toStock.simulationAmount = currentAmount + actualTransferAmount;
+            
+          console.log(`Added ${actualTransferAmount} to ${toStock.name}, new amount: ${toStock.simulationAmount}`);
         }
       }
     });
     
-    // Update the JSON data
+    // Update the JSON data - keep original amount unchanged, but include simulation amount for display
     const updatedJsonData = {
       ...jsonData,
-      boxes: updatedBoxes
+      boxes: updatedBoxes.map(box => {
+        // Ensure we maintain all the box properties, with updated simulation values
+        const updatedBox = {
+          ...box,
+          // Keep the original amount unchanged
+          amount: box.amount,
+          // Make sure simulationAmount is always included
+          simulationAmount: box.simulationAmount
+        };
+        
+        console.log(`Updated box ${box.name} after simulation:`, {
+          id: updatedBox.id,
+          amount: updatedBox.amount,
+          simulationAmount: updatedBox.simulationAmount
+        });
+        
+        return updatedBox;
+      })
     };
     
+    // Update the UI with the simulation results
+    console.log("Setting JSON data with simulation results:", updatedJsonData);
     setJsonData(updatedJsonData);
-    setEditorValue(JSON.stringify(updatedJsonData, null, 2));
+    // Don't update the editor value to avoid overwriting the original model
+    // setEditorValue(JSON.stringify(updatedJsonData, null, 2));
     
     // Increment simulation step counter
     setSimulationSteps(prev => prev + 1);
@@ -1309,7 +1385,32 @@ const PaperCanvas = () => {
   };
 
   const resetSimulation = () => {
+    // Reset simulation step counter
     setSimulationSteps(0);
+    
+    // Reset simulation amounts to original amounts
+    if (jsonData && jsonData.boxes) {
+      const resetBoxes = jsonData.boxes.map(box => {
+        // Reset simulationAmount to match the original amount
+        return {
+          ...box,
+          simulationAmount: box.amount
+        };
+      });
+      
+      const resetJsonData = {
+        ...jsonData,
+        boxes: resetBoxes
+      };
+      
+      // Update the UI with reset data
+      setJsonData(resetJsonData);
+      // Don't update the editor to preserve the original model
+      // setEditorValue(JSON.stringify(resetJsonData, null, 2));
+      
+      // Refresh the boxes to update the UI
+      refreshBoxes(resetJsonData);
+    }
   };
 
   const refreshBoxes = (updatedJsonData) => {
@@ -1320,14 +1421,53 @@ const PaperCanvas = () => {
     // Recreate boxes with updated data
     if (updatedJsonData.boxes) {
       updatedJsonData.boxes.forEach(boxData => {
+        console.log("Rendering box:", boxData.name, "with data:", {
+          id: boxData.id,
+          amount: boxData.amount,
+          simulationAmount: boxData.simulationAmount,
+          shape: boxData.shape
+        });
+        
         // Create text label first to measure its size
-        const displayAmount = boxData.shape === 'circle' ? '∞' : boxData.amount;
-        const textContent = `${boxData.name}\n${displayAmount}`;
+        let displayAmount, textContent;
+        
+        // Special case for infinite stocks (circles)
+        if (boxData.shape === 'circle') {
+          displayAmount = '∞';
+          textContent = `${boxData.name}\n${displayAmount}`;
+          console.log(`Box ${boxData.name} showing infinite amount: ${displayAmount}`);
+        } 
+        // For regular stocks in simulation mode
+        else if (boxData.simulationAmount !== undefined) {
+          // Format simulation amount with 2 decimal places
+          const simAmount = typeof boxData.simulationAmount === 'number' ? 
+            boxData.simulationAmount.toFixed(1) : boxData.simulationAmount;
+            
+          // Use amount as the original value
+          const origAmount = boxData.amount;
+            
+          textContent = `${boxData.name}\n${simAmount} / ${origAmount}`;
+          console.log(`Box ${boxData.name} showing simulation: ${simAmount} / ${origAmount}`);
+        } 
+        // For regular stocks without simulation
+        else {
+          displayAmount = boxData.amount;
+          textContent = `${boxData.name}\n${displayAmount}`;
+          console.log(`Box ${boxData.name} showing regular amount: ${displayAmount}`);
+        }
+        // Use a different text color for boxes in simulation mode
+        const hasSimulation = boxData.simulationAmount !== undefined;
+        const textColor = hasSimulation && boxData.simulationAmount !== boxData.amount ? 
+            '#FF6600' : 'black';
+        const fontWeight = hasSimulation && boxData.simulationAmount !== boxData.amount ? 
+            'bold' : 'normal';
+            
         const textLabel = new paper.PointText({
-          point: [boxData.x, boxData.y],
+          point: [boxData.position?.x || 0, boxData.position?.y || 0],
           content: textContent,
-          fillColor: 'black',
+          fillColor: textColor,
           fontSize: 12,
+          fontWeight: fontWeight,
           justification: 'center'
         });
         
@@ -1337,29 +1477,39 @@ const PaperCanvas = () => {
         const paddingY = 30; // Increased vertical padding
         
         // Create stock box based on text size
+        const posX = boxData.position?.x || 0;
+        const posY = boxData.position?.y || 0;
+        
+        // Apply different styling for stocks in simulation mode
+        const isInSimulation = hasSimulation && boxData.simulationAmount !== boxData.amount;
+        const circleFillColor = isInSimulation ? '#B5EDA0' : '#90EE90';  // Slightly different green for simulation
+        const rectFillColor = isInSimulation ? '#C2E2F2' : '#ADD8E6';   // Slightly different blue for simulation
+        const strokeColor = isInSimulation ? '#FF6600' : 'black';       // Orange border for simulation
+        const strokeWidth = isInSimulation ? 3 : 2;                     // Thicker border for simulation
+        
         const stockBox = boxData.shape === 'circle' ? 
           new paper.Path.Circle({
-            center: [boxData.x, boxData.y],
+            center: [posX, posY],
             radius: Math.max(40, Math.max(textBounds.width/2 + paddingX/2, textBounds.height/2 + paddingY/2)),
-            fillColor: '#90EE90',
-            strokeColor: 'black',
-            strokeWidth: 2
+            fillColor: circleFillColor,
+            strokeColor: strokeColor,
+            strokeWidth: strokeWidth
           }) :
           new paper.Path.Rectangle({
-            point: [boxData.x - textBounds.width/2 - paddingX, boxData.y - textBounds.height/2 - paddingY],
+            point: [posX - textBounds.width/2 - paddingX, posY - textBounds.height/2 - paddingY],
             size: [textBounds.width + paddingX*2, textBounds.height + paddingY*2],
-            fillColor: '#ADD8E6',
-            strokeColor: 'black',
-            strokeWidth: 2
+            fillColor: rectFillColor,
+            strokeColor: strokeColor,
+            strokeWidth: strokeWidth
           });
         
         // Adjust text position to center it properly
-        textLabel.position = new paper.Point(boxData.x, boxData.y);
+        textLabel.position = new paper.Point(posX, posY);
         
         const stockGroup = new paper.Group([stockBox, textLabel]);
         stockGroup.stockId = boxData.id;
         stockGroup.stockName = boxData.name;
-        stockGroup.position = new paper.Point(boxData.x, boxData.y);
+        stockGroup.position = new paper.Point(posX, posY);
         
         // Add click handlers for interactivity
         stockGroup.onMouseDown = (event) => {
@@ -1387,52 +1537,6 @@ const PaperCanvas = () => {
     refreshConnections(updatedJsonData);
   };
 
-  const updateConnectionsAfterBoxChange = (newBoxes) => {
-    paperState.current.connections.forEach(conn => conn.remove());
-    const newConnections = [];
-    const connectionsData = [];
-    
-    for (let i = 0; i < newBoxes.length - 1; i++) {
-      const connection = createConnection(newBoxes[i], newBoxes[i + 1]);
-      newConnections.push(connection);
-      
-      // Add connection data for JSON
-      const fromStockName = newBoxes[i].stockName || `Stock ${i + 1}`;
-      const toStockName = newBoxes[i + 1].stockName || `Stock ${i + 2}`;
-      const fromStockId = newBoxes[i].stockId || (i + 1);
-      const toStockId = newBoxes[i + 1].stockId || (i + 2);
-      connectionsData.push({
-        id: i + 1,
-        name: `${fromStockName} -> ${toStockName}`,
-        type: 'feedback_loop',
-        fromStockId: fromStockId,
-        toStockId: toStockId
-      });
-    }
-    
-    setConnections(newConnections);
-    paperState.current.connections = newConnections;
-    // Only update positions, not names or amounts, to preserve manual edits from the editor
-    setJsonData(prev => ({
-      ...prev,
-      boxes: prev.boxes.map(box => {
-        const updatedBox = newBoxes.find(b => b.stockId === box.id);
-        if (updatedBox) {
-          return {
-            ...box,
-            position: {
-              x: Math.round(updatedBox.position.x),
-              y: Math.round(updatedBox.position.y)
-            },
-            amount: box.amount !== undefined ? box.amount : 0
-          };
-        }
-        return box;
-      }),
-      connections: prev.connections // preserve names and structure
-    }));
-
-  };
 
   const updateConnectionsOnDrag = (draggedBox, boxIndex) => {
     // Update JSON data for the dragged box
@@ -2386,7 +2490,8 @@ const PaperCanvas = () => {
                     });
                   }
                   
-                  setJsonData(parsedValue);
+                  const dataWithSimulation = ensureSimulationAmount(parsedValue);
+                  setJsonData(dataWithSimulation);
                 } catch (error) {
                   // Don't update if JSON is invalid
                   console.error('Invalid JSON:', error);

@@ -190,7 +190,10 @@ const PaperCanvas = () => {
         ...data,
         boxes: data.boxes.map(box => ({
           ...box,
-          simulationAmount: box.simulationAmount !== undefined ? box.simulationAmount : box.amount
+          // Initialize simulationAmount to amount if not set
+          simulationAmount: box.simulationAmount !== undefined ?
+            box.simulationAmount :
+            box.amount
         }))
       };
     }
@@ -571,12 +574,38 @@ const PaperCanvas = () => {
       }
 
       const stockName = stockData.name || `Stock ${index + 1}`;
-      const stockAmount = stockData.amount || 0;
+      let displayText;
+      let textColor = 'black';
+      let fontWeight = 'normal';
+
+      // Handle infinite stocks
+      if (stockData.shape === 'circle') {
+        displayText = `${stockName}\n∞`;
+      }
+      // Handle stocks with simulation amounts
+      else if (stockData.simulationAmount !== undefined) {
+        const simAmount = typeof stockData.simulationAmount === 'number' ?
+          stockData.simulationAmount : stockData.simulationAmount;
+        displayText = `${stockName}\n${simAmount} / ${stockData.amount}`;
+        
+        // Highlight changed amounts
+        if (stockData.simulationAmount !== stockData.amount) {
+          textColor = '#FF6600';
+          fontWeight = 'bold';
+        }
+      }
+      // Regular stocks
+      else {
+        displayText = `${stockName}\n${stockData.amount}`;
+      }
+
+      // Create text label with simulation amount
       const textLabel = new paper.PointText({
-        point: [x, y - 5], // Offset text position slightly upward for better centering
-        content: `${stockName}\n(${stockAmount})`,
-        fillColor: 'black',
+        point: [x, y - 5],
+        content: displayText,
+        fillColor: textColor,
         fontSize: 10,
+        fontWeight: fontWeight,
         justification: 'center'
       });
 
@@ -1300,6 +1329,22 @@ const PaperCanvas = () => {
             // Fixed amount deduction
             actualDeductAmount = Number(deductAmountRaw);
           }
+          
+          // Check if source has sufficient amount for deduction
+          const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
+            fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+          
+          if (currentAmount < actualDeductAmount) {
+            // If insufficient amount, limit deduction to available amount
+            actualDeductAmount = Math.max(0, currentAmount);
+            console.log(`Insufficient amount in ${fromStock.name}. Limited deduction to ${actualDeductAmount}`);
+          }
+          
+          // Skip this connection entirely if no amount can be deducted
+          if (actualDeductAmount <= 0) {
+            console.log(`Connection from ${fromStock.name} to ${toStock.name} is inactive - no deductible amount`);
+            return; // Skip this connection
+          }
         }
         
         // Calculate actual transfer amount based on whether it's percentage or fixed
@@ -1313,8 +1358,15 @@ const PaperCanvas = () => {
             // If source is infinite, use a fixed value instead of percentage
             actualTransferAmount = isFromInfinite ? parseFloat(percentageStr) : fromStock.simulationAmount * percentage;
           } else {
-            // Fixed amount transfer
-            actualTransferAmount = Number(transferAmountRaw);
+            // Fixed amount transfer - but limit to what was actually deducted
+            const requestedTransferAmount = Number(transferAmountRaw);
+            if (!isFromInfinite) {
+              // For finite sources, transfer amount should not exceed what was actually deducted
+              actualTransferAmount = Math.min(requestedTransferAmount, actualDeductAmount);
+            } else {
+              // For infinite sources, use the full requested transfer amount
+              actualTransferAmount = requestedTransferAmount;
+            }
           }
         }
         
@@ -1374,8 +1426,8 @@ const PaperCanvas = () => {
     // Increment simulation step counter
     setSimulationSteps(prev => prev + 1);
     
-    // Refresh the visual display
-    refreshBoxes(updatedJsonData);
+    // Remove the refreshBoxes call - not needed anymore
+    // refreshBoxes(updatedJsonData); // REMOVED
   };
 
   const runMultipleSteps = () => {
@@ -1408,8 +1460,8 @@ const PaperCanvas = () => {
       // Don't update the editor to preserve the original model
       // setEditorValue(JSON.stringify(resetJsonData, null, 2));
       
-      // Refresh the boxes to update the UI
-      refreshBoxes(resetJsonData);
+      // Remove this line:
+      // refreshBoxes(resetJsonData); // REMOVED
     }
   };
 

@@ -74,8 +74,42 @@ export const createConnection = (box1, box2, connectionData, paper, getEdgePoint
     const deductAmount = connectionData.deductAmount !== undefined ? Number(connectionData.deductAmount) : 1;
     const transferAmount = connectionData.transferAmount !== undefined ? Number(connectionData.transferAmount) : 1;
     
-    // Always display both amounts
-     const displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
+    // Check if source or target stocks are infinite (circle shape)
+    const fromStockId = connectionData.fromStockId;
+    const toStockId = connectionData.toStockId;
+    
+    // We need to find the stock data to check if they're infinite
+    // This requires accessing the jsonData from the parent component
+    // Since we don't have direct access, we'll use the shape property if available
+    const fromStockShape = box1 && box1.children && box1.children[0] && 
+                          box1.children[0].className === 'Path' && 
+                          box1.children[0].segments && 
+                          box1.children[0].segments.length === 1 ? 'circle' : 'rectangle';
+    
+    const toStockShape = box2 && box2.children && box2.children[0] && 
+                        box2.children[0].className === 'Path' && 
+                        box2.children[0].segments && 
+                        box2.children[0].segments.length === 1 ? 'circle' : 'rectangle';
+    
+    const isFromInfinite = fromStockShape === 'circle';
+    const isToInfinite = toStockShape === 'circle';
+    
+    let displayText;
+    
+    // Customize label based on infinite stock connections
+    if (isFromInfinite && !isToInfinite) {
+      // From infinite to normal: only show transfer amount
+      displayText = `${connectionData.name} (∞/+${transferAmount})`;
+    } else if (!isFromInfinite && isToInfinite) {
+      // From normal to infinite: only show deduct amount
+      displayText = `${connectionData.name} (-${deductAmount}/∞)`;
+    } else if (isFromInfinite && isToInfinite) {
+      // Both infinite: show infinity symbols
+      displayText = `${connectionData.name} (∞/∞)`;
+    } else {
+      // Normal case: show both amounts
+      displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
+    }
     
     nameLabel = new paper.PointText({
       point: midPoint.add(new paper.Point(0, -10)),

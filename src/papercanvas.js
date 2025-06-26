@@ -111,14 +111,24 @@ const PaperCanvas = () => {
     const fromStockData = jsonData.boxes.find(box => box.id === fromStockId);
     const toStockData = jsonData.boxes.find(box => box.id === toStockId);
     const connectionName = fromStockData && toStockData ? `${fromStockData.name} -> ${toStockData.name}` : `Connection ${maxId + 1}`;
+    
+    // Check if either stock is infinite (circle shape)
+    const isFromInfinite = fromStockData && fromStockData.shape === 'circle';
+    const isToInfinite = toStockData && toStockData.shape === 'circle';
+    
+    // Default values for deductAmount and transferAmount
+    // Using numbers by default for new connections
+    const deductAmount = 1;
+    const transferAmount = 1;
+    
     const newConnection = {
       id: maxId + 1,
       name: connectionName,
       type: "feedback_loop",
       fromStockId: fromStockId,
       toStockId: toStockId,
-      deductAmount: 1, // Amount deducted from source stock
-      transferAmount: 1 // Amount added to destination stock
+      deductAmount: deductAmount, // Amount deducted from source stock
+      transferAmount: transferAmount // Amount added to destination stock
     };
     // Find the stock groups for visual connection
     const fromStockGroup = paperState.current.boxes.find(box => box.stockId === fromStockId);
@@ -1021,8 +1031,32 @@ const PaperCanvas = () => {
       const deductAmount = connectionData.deductAmount !== undefined ? connectionData.deductAmount : 1;
       const transferAmount = connectionData.transferAmount !== undefined ? connectionData.transferAmount : 1;
       
-      // Always show both amounts in the label
-      displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
+      // Find the source and target stocks to check if they're infinite
+      const fromStockId = connectionData.fromStockId;
+      const toStockId = connectionData.toStockId;
+      
+      // Find the stock data from jsonData
+      const fromStock = jsonData.boxes.find(box => box.id === fromStockId);
+      const toStock = jsonData.boxes.find(box => box.id === toStockId);
+      
+      const isFromInfinite = fromStock && fromStock.shape === 'circle';
+      const isToInfinite = toStock && toStock.shape === 'circle';
+      
+      // Customize label based on infinite stock connections
+      if (isFromInfinite && !isToInfinite) {
+        // From infinite to normal: only show transfer amount
+        displayText = `${connectionData.name} (∞/+${transferAmount})`;
+      } else if (!isFromInfinite && isToInfinite) {
+        // From normal to infinite: only show deduct amount
+        displayText = `${connectionData.name} (-${deductAmount}/∞)`;
+      } else if (isFromInfinite && isToInfinite) {
+        // Both infinite: show infinity symbols
+        displayText = `${connectionData.name} (∞/∞)`;
+      } else {
+        // Normal case: show both amounts
+        displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
+      }
+      
       nameLabel = new paper.PointText({
         point: midPoint.add(new paper.Point(0, -10)),
         content: displayText,
@@ -1190,41 +1224,63 @@ const PaperCanvas = () => {
     jsonData.connections.forEach(connection => {
       const fromStock = updatedBoxes.find(box => box.id === connection.fromStockId);
       const toStock = updatedBoxes.find(box => box.id === connection.toStockId);
-      const deductAmountRaw = connection.deductAmount !== undefined && connection.deductAmount !== null ? connection.deductAmount : 1;
-      const transferAmountRaw = connection.transferAmount !== undefined && connection.transferAmount !== null ? connection.transferAmount : 1;
+      
+      // Preserve the original format (number or percentage string)
+      const deductAmountRaw = connection.deductAmount !== undefined && connection.deductAmount !== null ? 
+        connection.deductAmount : 1;
+      const transferAmountRaw = connection.transferAmount !== undefined && connection.transferAmount !== null ? 
+        connection.transferAmount : 1;
       
       if (fromStock && toStock) {
+        // Handle special cases for infinite stocks (circle shape)
+        const isFromInfinite = fromStock.shape === 'circle';
+        const isToInfinite = toStock.shape === 'circle';
+        
+        // For connection from circle (infinite) to normal stock:
+        // - No deduction from source (it's infinite)
+        // - Transfer amount is used normally to add to destination
+        
+        // For connection from normal stock to circle (infinite):
+        // - Deduct normally from source
+        // - No addition to destination (it's already infinite)
+        
         // Calculate actual deduct amount based on whether it's percentage or fixed
-        let actualDeductAmount;
-        if (typeof deductAmountRaw === 'string' && deductAmountRaw.includes('%')) {
-          // Percentage-based deduction
-          const percentage = parseFloat(deductAmountRaw) / 100;
-          actualDeductAmount = fromStock.amount * percentage;
-        } else {
-          // Fixed amount deduction
-          actualDeductAmount = Number(deductAmountRaw);
+        let actualDeductAmount = 0;
+        if (!isFromInfinite) { // Only calculate deduct amount if source is not infinite
+          if (typeof deductAmountRaw === 'string' && deductAmountRaw.includes('%')) {
+            // Percentage-based deduction
+            const percentageStr = deductAmountRaw.replace('%', '');
+            const percentage = parseFloat(percentageStr) / 100;
+            actualDeductAmount = fromStock.amount * percentage;
+          } else {
+            // Fixed amount deduction
+            actualDeductAmount = Number(deductAmountRaw);
+          }
         }
         
         // Calculate actual transfer amount based on whether it's percentage or fixed
-        let actualTransferAmount;
-        if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
-          // Percentage-based transfer
-          const percentage = parseFloat(transferAmountRaw) / 100;
-          // For percentage transfers, we base it on the source stock's amount
-          actualTransferAmount = fromStock.amount * percentage;
-        } else {
-          // Fixed amount transfer
-          actualTransferAmount = Number(transferAmountRaw);
+        let actualTransferAmount = 0;
+        if (!isToInfinite) { // Only calculate transfer amount if destination is not infinite
+          if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
+            // Percentage-based transfer
+            const percentageStr = transferAmountRaw.replace('%', '');
+            const percentage = parseFloat(percentageStr) / 100;
+            // For percentage transfers, we base it on the source stock's amount
+            // If source is infinite, use a fixed value instead of percentage
+            actualTransferAmount = isFromInfinite ? parseFloat(percentageStr) : fromStock.amount * percentage;
+          } else {
+            // Fixed amount transfer
+            actualTransferAmount = Number(transferAmountRaw);
+          }
         }
         
-        // Always transfer (regardless of source stock amount)
         // Deduct from source (unless it's infinite)
-        if (fromStock.shape !== 'circle') {
+        if (!isFromInfinite) {
           fromStock.amount = fromStock.amount - actualDeductAmount;
         }
         
         // Add to destination (unless it's infinite)
-        if (toStock.shape !== 'circle') {
+        if (!isToInfinite) {
           toStock.amount += actualTransferAmount;
         }
       }
@@ -2294,10 +2350,38 @@ const PaperCanvas = () => {
                   // Ensure connections have deductAmount and transferAmount properties
                   if (parsedValue.connections) {
                     parsedValue.connections = parsedValue.connections.map(conn => {
+                      // Preserve string format for percentage values
+                      let deductAmount = conn.deductAmount !== undefined ? conn.deductAmount : 1;
+                      let transferAmount = conn.transferAmount !== undefined ? conn.transferAmount : 1;
+                      
+                      // If the value is a string and contains '%', keep it as a string
+                      // Otherwise, ensure it's a number
+                      if (typeof deductAmount === 'string') {
+                        if (!deductAmount.includes('%')) {
+                          deductAmount = Number(deductAmount);
+                        }
+                      } else if (typeof deductAmount === 'number') {
+                        // Already a number, no conversion needed
+                      } else if (deductAmount !== undefined) {
+                        // Convert other types to number
+                        deductAmount = Number(deductAmount);
+                      }
+                      
+                      if (typeof transferAmount === 'string') {
+                        if (!transferAmount.includes('%')) {
+                          transferAmount = Number(transferAmount);
+                        }
+                      } else if (typeof transferAmount === 'number') {
+                        // Already a number, no conversion needed
+                      } else if (transferAmount !== undefined) {
+                        // Convert other types to number
+                        transferAmount = Number(transferAmount);
+                      }
+                      
                       return {
                         ...conn,
-                        deductAmount: conn.deductAmount !== undefined ? Number(conn.deductAmount) : 1,
-                        transferAmount: conn.transferAmount !== undefined ? Number(conn.transferAmount) : 1
+                        deductAmount: deductAmount,
+                        transferAmount: transferAmount
                       };
                     });
                   }

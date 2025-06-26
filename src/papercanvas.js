@@ -1345,89 +1345,86 @@ const PaperCanvas = () => {
         connection.transferAmount : 1;
       
       if (fromStock && toStock) {
-        // Handle special cases for infinite stocks (circle shape)
-        const isFromInfinite = fromStock.shape === 'circle';
-        const isToInfinite = toStock.shape === 'circle';
-        
-        // Log for self-connections
-        if (connection.fromStockId === connection.toStockId) {
-          console.log(`Applying self-connection on stock ${fromStock.name} (ID: ${fromStock.id})`, {
-            currentAmount: fromStock.simulationAmount,
-            deductAmountRaw,
-            transferAmountRaw
-          });
-        }
-        
-        // Calculate actual deduct amount based on whether it's percentage or fixed
-        let actualDeductAmount = 0;
-        if (!isFromInfinite) { // Only calculate deduct amount if source is not infinite
-          if (typeof deductAmountRaw === 'string' && deductAmountRaw.includes('%')) {
-            // Percentage-based deduction
-            const percentageStr = deductAmountRaw.replace('%', '');
-            const percentage = parseFloat(percentageStr) / 100;
-            actualDeductAmount = fromStock.simulationAmount * percentage;
-          } else {
-            // Fixed amount deduction
-            actualDeductAmount = Number(deductAmountRaw);
-          }
-          
-          // Check if source has sufficient amount for deduction
-          const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
-            fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
-          
-          if (currentAmount < actualDeductAmount) {
-            // If insufficient amount, limit deduction to available amount
-            actualDeductAmount = Math.max(0, currentAmount);
-            console.log(`Insufficient amount in ${fromStock.name}. Limited deduction to ${actualDeductAmount}`);
-          }
-          
-          // Skip this connection entirely if no amount can be deducted
-          if (actualDeductAmount <= 0) {
-            console.log(`Connection from ${fromStock.name} to ${toStock.name} is inactive - no deductible amount`);
-            return; // Skip this connection
-          }
-        }
-        
-        // Calculate actual transfer amount based on whether it's percentage or fixed
-        let actualTransferAmount = 0;
-        if (!isToInfinite) { // Only calculate transfer amount if destination is not infinite
-          if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
-            // Percentage-based transfer
-            const percentageStr = transferAmountRaw.replace('%', '');
-            const percentage = parseFloat(percentageStr) / 100;
-            // For percentage transfers, we base it on the source stock's amount
-            // If source is infinite, use a fixed value instead of percentage
-            actualTransferAmount = isFromInfinite ? parseFloat(percentageStr) : fromStock.simulationAmount * percentage;
-          } else {
-            // Fixed amount transfer - but limit to what was actually deducted
-            const requestedTransferAmount = Number(transferAmountRaw);
-            if (!isFromInfinite) {
-              // For finite sources, transfer amount should not exceed what was actually deducted
-              actualTransferAmount = Math.min(requestedTransferAmount, actualDeductAmount);
-            } else {
-              // For infinite sources, use the full requested transfer amount
-              actualTransferAmount = requestedTransferAmount;
-            }
-          }
-        }
-        
         // Special handling for self-connections
         if (connection.fromStockId === connection.toStockId) {
-          if (!isFromInfinite) {  // Only process if not infinite
-            // For self-connections, we calculate the net effect (transferAmount - deductAmount)
-            const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
-              fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
-              
-            // Net effect calculation
-            const netChange = actualTransferAmount - actualDeductAmount;
-            
-            // Apply net change
-            fromStock.simulationAmount = Math.max(0, currentAmount + netChange);
-            
-            console.log(`Self-connection on ${fromStock.name}: Deducted ${actualDeductAmount}, Added ${actualTransferAmount}, Net change: ${netChange}, New amount: ${fromStock.simulationAmount}`);
+          const transferAmountRaw = connection.transferAmount;
+          let actualTransferAmount = 0;
+          if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
+            const percentageStr = transferAmountRaw.replace('%', '');
+            const percentage = parseFloat(percentageStr) / 100;
+            if (fromStock.shape !== 'circle') {
+              actualTransferAmount = fromStock.simulationAmount * percentage;
+            } else {
+              // For infinite stock, percentage is treated as fixed value
+              actualTransferAmount = parseFloat(percentageStr);
+            }
+          } else {
+            actualTransferAmount = Number(transferAmountRaw);
           }
+
+          const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
+              fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+          fromStock.simulationAmount = Math.max(0, currentAmount + actualTransferAmount);
+          console.log(`Self-connection on ${fromStock.name}: Added ${actualTransferAmount}, New amount: ${fromStock.simulationAmount}`);
         } else {
           // Normal connection processing (source and destination are different)
+          const isFromInfinite = fromStock.shape === 'circle';
+          const isToInfinite = toStock.shape === 'circle';
+          const deductAmountRaw = connection.deductAmount;
+          const transferAmountRaw = connection.transferAmount;
+
+          // Calculate actual deduct amount based on whether it's percentage or fixed
+          let actualDeductAmount = 0;
+          if (!isFromInfinite) { // Only calculate deduct amount if source is not infinite
+            if (typeof deductAmountRaw === 'string' && deductAmountRaw.includes('%')) {
+              // Percentage-based deduction
+              const percentageStr = deductAmountRaw.replace('%', '');
+              const percentage = parseFloat(percentageStr) / 100;
+              actualDeductAmount = fromStock.simulationAmount * percentage;
+            } else {
+              // Fixed amount deduction
+              actualDeductAmount = Number(deductAmountRaw);
+            }
+            
+            // Check if source has sufficient amount for deduction
+            const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
+              fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+            
+            if (currentAmount < actualDeductAmount) {
+              // If insufficient amount, limit deduction to available amount
+              actualDeductAmount = Math.max(0, currentAmount);
+              console.log(`Insufficient amount in ${fromStock.name}. Limited deduction to ${actualDeductAmount}`);
+            }
+            
+            // Skip this connection entirely if no amount can be deducted
+            if (actualDeductAmount <= 0) {
+              console.log(`Connection from ${fromStock.name} to ${toStock.name} is inactive - no deductible amount`);
+              return; // Skip this connection
+            }
+          }
+          
+          // Calculate actual transfer amount based on whether it's percentage or fixed
+          let actualTransferAmount = 0;
+          if (!isToInfinite) { // Only calculate transfer amount if destination is not infinite
+            if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
+              // Percentage-based transfer
+              const percentageStr = transferAmountRaw.replace('%', '');
+              const percentage = parseFloat(percentageStr) / 100;
+              // For percentage transfers, we base it on the source stock's amount
+              // If source is infinite, use a fixed value instead of percentage
+              actualTransferAmount = isFromInfinite ? parseFloat(percentageStr) : fromStock.simulationAmount * percentage;
+            } else {
+              // Fixed amount transfer - but limit to what was actually deducted
+              const requestedTransferAmount = Number(transferAmountRaw);
+              if (!isFromInfinite) {
+                // For finite sources, transfer amount should not exceed what was actually deducted
+                actualTransferAmount = Math.min(requestedTransferAmount, actualDeductAmount);
+              } else {
+                // For infinite sources, use the full requested transfer amount
+                actualTransferAmount = requestedTransferAmount;
+              }
+            }
+          }
           
           // Deduct from source's simulation amount (unless it's infinite)
           if (!isFromInfinite) {

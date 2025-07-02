@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import paper from 'paper';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import Editor from '@monaco-editor/react';
@@ -44,10 +44,114 @@ const PaperCanvas = () => {
   const [newStockAmount, setNewStockAmount] = useState(0);
   const [newStockShape, setNewStockShape] = useState('rectangle'); // 'rectangle' or 'circle'
   const [selectedItem, setSelectedItem] = useState(null); // Unified selection for stock or connection
-  const [editingItem, setEditingItem] = useState(null); // For editing form (stock or connection)
+  const editorRef = useRef(null);
+  const [jsonEditorVisible, setJsonEditorVisible] = useState(true); // Control JSON editor visibility
+
+  // Function to highlight and scroll to selected item in JSON editor
+  const highlightSelectedItemInEditor = useCallback((item) => {
+    if (!editorRef.current || !item || !jsonEditorVisible) return;
+
+    const editor = editorRef.current;
+    const model = editor.getModel();
+    if (!model) return;
+
+    const jsonText = model.getValue();
+    let searchPattern = '';
+    let itemId = '';
+
+    if (item.type === 'stock') {
+      itemId = item.id;
+      searchPattern = `"id":\s*"${itemId}"`;
+    } else if (item.type === 'connection') {
+      itemId = item.id;
+      searchPattern = `"id":\s*"${itemId}"`;
+    }
+
+    if (!searchPattern) return;
+
+    // Find the pattern in the JSON text
+    const regex = new RegExp(searchPattern, 'g');
+    const match = regex.exec(jsonText);
+    
+    if (match) {
+      const startPos = model.getPositionAt(match.index);
+      
+      // Find the start and end of the JSON object
+      let objectStart = match.index;
+      let braceCount = 0;
+      let objectEnd = match.index;
+      
+      // Find the start of the object (look backwards for opening brace)
+      for (let i = match.index; i >= 0; i--) {
+        if (jsonText[i] === '}') braceCount++;
+        if (jsonText[i] === '{') {
+          if (braceCount === 0) {
+            objectStart = i;
+            break;
+          }
+          braceCount--;
+        }
+      }
+      
+      // Find the end of the object (look forwards for closing brace)
+      braceCount = 0;
+      for (let i = objectStart; i < jsonText.length; i++) {
+        if (jsonText[i] === '{') braceCount++;
+        if (jsonText[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            objectEnd = i + 1;
+            break;
+          }
+        }
+      }
+      
+      const startPosition = model.getPositionAt(objectStart);
+      const endPosition = model.getPositionAt(objectEnd);
+      
+      // Clear previous decorations
+      const oldDecorations = editor.deltaDecorations([], []);
+      
+      // Add highlight decoration
+      const decorations = editor.deltaDecorations(oldDecorations, [{
+        range: {
+          startLineNumber: startPosition.lineNumber,
+          startColumn: startPosition.column,
+          endLineNumber: endPosition.lineNumber,
+          endColumn: endPosition.column
+        },
+        options: {
+          className: 'selected-json-highlight',
+          isWholeLine: false
+        }
+      }]);
+      
+      // Scroll to the highlighted section
+      editor.revealRangeInCenter({
+        startLineNumber: startPosition.lineNumber,
+        startColumn: startPosition.column,
+        endLineNumber: endPosition.lineNumber,
+        endColumn: endPosition.column
+      });
+      
+      // Store decorations for cleanup
+      editor._selectedItemDecorations = decorations;
+    }
+  }, [jsonEditorVisible]);
+
+  // Effect to highlight selected item in JSON editor
+  useEffect(() => {
+    if (selectedItem && jsonEditorVisible) {
+      // Small delay to ensure editor is ready
+      setTimeout(() => {
+        highlightSelectedItemInEditor(selectedItem);
+      }, 100);
+    }
+  }, [selectedItem, jsonEditorVisible, highlightSelectedItemInEditor]);
+
+   const [editingItem, setEditingItem] = useState(null); // For editing form (stock or connection)
   const [selectedBoxId, setSelectedBoxId] = useState(null); // Track selected box
   // Removed editMode - now context-sensitive based on selection
-  const [jsonEditorVisible, setJsonEditorVisible] = useState(true); // Control JSON editor visibility
   const [splitSize, setSplitSize] = useState('70%'); // Control split pane size
   
   // Canvas management state
@@ -2544,6 +2648,20 @@ const PaperCanvas = () => {
         .stock-placement-cursor {
           cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='2' ry='2' fill='%234CAF50' fill-opacity='0.7' stroke='%23333' stroke-width='2'/%3E%3Ctext x='16' y='20' font-family='Arial' font-size='12' text-anchor='middle' fill='white'%3ES%3C/text%3E%3C/svg%3E") 16 16, crosshair;
         }
+        
+        /* JSON Editor highlighting styles */
+        .selected-json-highlight {
+          background-color: rgba(255, 193, 7, 0.3) !important;
+          border: 2px solid #ffc107 !important;
+          border-radius: 4px !important;
+          animation: highlight-pulse 2s ease-in-out;
+        }
+        
+        @keyframes highlight-pulse {
+          0% { background-color: rgba(255, 193, 7, 0.6); }
+          50% { background-color: rgba(255, 193, 7, 0.3); }
+          100% { background-color: rgba(255, 193, 7, 0.3); }
+        }
       `}</style>
       <PanelGroup
         direction="horizontal"
@@ -2724,6 +2842,9 @@ const PaperCanvas = () => {
               height="100%"
               language="json"
               value={editorValue}
+              onMount={(editor) => {
+                editorRef.current = editor;
+              }}
               onChange={(value) => {
                 setEditorValue(value);
                 try {
@@ -2782,9 +2903,8 @@ const PaperCanvas = () => {
                 automaticLayout: true,
                 formatOnPaste: true,
                 formatOnType: true
-              }}
-            />
-              </div>
+              }}            />
+            </div>
             </Panel>
           </>
         )}

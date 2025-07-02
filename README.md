@@ -38,6 +38,75 @@
    - 使用 IndexedDB 保存画布状态
    - 加载已保存的画布数据
 
+## IDE 调试配置
+
+本项目已配置了完整的 VS Code 调试环境，支持多种调试方式：
+
+### 调试配置说明
+
+1. **Debug React App (Chrome)** - 推荐方式
+   - 在 Chrome 浏览器中启动应用并附加调试器
+   - 支持断点、变量检查、调用栈等完整调试功能
+   - 自动启动开发服务器
+
+2. **Debug React App** - Node.js 调试
+   - 直接调试 React 开发服务器进程
+   - 适用于调试构建过程和服务器端逻辑
+
+3. **Debug Tests** - 测试调试
+   - 调试所有测试文件
+   - 支持断点和变量检查
+
+4. **Debug Current Test File** - 单文件测试调试
+   - 调试当前打开的测试文件
+   - 快速调试特定测试用例
+
+### 如何使用 IDE 调试
+
+#### 方法一：使用调试面板（推荐）
+1. 在 VS Code 中打开项目
+2. 按 `Cmd+Shift+D` (macOS) 或 `Ctrl+Shift+D` (Windows/Linux) 打开调试面板
+3. 选择 "Debug React App (Chrome)" 配置
+4. 点击绿色播放按钮或按 `F5` 开始调试
+5. 应用会自动在 Chrome 中打开，调试器已附加
+
+#### 方法二：使用命令面板
+1. 按 `Cmd+Shift+P` (macOS) 或 `Ctrl+Shift+P` (Windows/Linux)
+2. 输入 "Debug: Start Debugging"
+3. 选择调试配置
+
+#### 设置断点
+1. 在代码行号左侧点击设置断点（红色圆点）
+2. 或者在代码中添加 `debugger;` 语句
+3. 运行调试配置，程序会在断点处暂停
+
+#### 调试功能
+- **变量检查**：在调试面板查看局部变量和全局变量
+- **调用栈**：查看函数调用链
+- **监视表达式**：添加自定义表达式进行监视
+- **控制台**：在调试上下文中执行代码
+- **步进调试**：逐行执行代码（F10 步过，F11 步入，Shift+F11 步出）
+
+### 调试技巧
+
+1. **React 组件调试**
+   - 在组件的 `useEffect`、事件处理函数中设置断点
+   - 使用 React Developer Tools 浏览器扩展配合调试
+
+2. **Paper.js 画布调试**
+   - 在 `papercanvas.js` 中的绘图函数设置断点
+   - 检查 Paper.js 对象的属性和方法
+
+3. **数据流调试**
+   - 在 `dbService.js` 中调试数据库操作
+   - 监视状态变化和数据传递
+
+### 环境要求
+
+- VS Code
+- Chrome 浏览器（用于浏览器调试）
+- Node.js 和 npm
+
 ## 项目结构
 
 ```
@@ -48,6 +117,11 @@ src/
 ├── canvasUtils.js      # 画布工具函数
 ├── connectionUtils.js  # 连接线工具
 └── dbService.js        # 数据存储服务
+
+.vscode/
+├── launch.json         # 调试配置
+├── settings.json       # VS Code 设置
+└── tasks.json          # 任务配置
 ```
 
 ## 核心模块说明

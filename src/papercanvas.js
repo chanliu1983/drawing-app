@@ -209,13 +209,24 @@ const PaperCanvas = () => {
     if (data && data.boxes) {
       return {
         ...data,
-        boxes: data.boxes.map(box => ({
-          ...box,
-          // Initialize simulationAmount to amount if not set
-          simulationAmount: box.simulationAmount !== undefined ?
-            box.simulationAmount :
-            box.amount
-        }))
+        boxes: data.boxes.map(box => {
+          // Ensure amount is a valid number
+          const validAmount = typeof box.amount === 'number' && !isNaN(box.amount) ? box.amount : 0;
+          // Ensure simulationAmount is a valid number
+          let validSimulationAmount;
+          if (box.simulationAmount !== undefined) {
+            const parsed = typeof box.simulationAmount === 'number' ? box.simulationAmount : parseFloat(box.simulationAmount);
+            validSimulationAmount = !isNaN(parsed) ? parsed : validAmount;
+          } else {
+            validSimulationAmount = validAmount;
+          }
+          
+          return {
+            ...box,
+            amount: validAmount,
+            simulationAmount: validSimulationAmount
+          };
+        })
       };
     }
     return data;
@@ -605,8 +616,13 @@ const PaperCanvas = () => {
       }
       // Handle stocks with simulation amounts
       else if (stockData.simulationAmount !== undefined) {
-        const simAmount = typeof stockData.simulationAmount === 'number' ?
-          stockData.simulationAmount.toFixed(3) : parseFloat(stockData.simulationAmount).toFixed(3);
+        let simAmount;
+        if (typeof stockData.simulationAmount === 'number' && !isNaN(stockData.simulationAmount)) {
+          simAmount = stockData.simulationAmount.toFixed(3);
+        } else {
+          const parsed = parseFloat(stockData.simulationAmount);
+          simAmount = !isNaN(parsed) ? parsed.toFixed(3) : '0.000';
+        }
         displayText = `${stockName}\n${simAmount} / ${stockData.amount}`;
         
         // Highlight changed amounts
@@ -1453,21 +1469,31 @@ const PaperCanvas = () => {
           const transferAmountRaw = connection.transferAmount;
           let actualTransferAmount = 0;
           if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
-            const percentageStr = transferAmountRaw.replace('%', '');
-            const percentage = parseFloat(percentageStr) / 100;
-            if (fromStock.shape !== 'circle') {
-              actualTransferAmount = fromStock.simulationAmount * percentage;
+              const percentageStr = transferAmountRaw.replace('%', '').trim();
+              const parsedPercentage = parseFloat(percentageStr);
+              if (isNaN(parsedPercentage)) {
+                console.warn(`Invalid percentage value: ${transferAmountRaw}, defaulting to 0`);
+                actualTransferAmount = 0;
+              } else {
+                const percentage = parsedPercentage / 100;
+                if (fromStock.shape !== 'circle') {
+                  actualTransferAmount = fromStock.simulationAmount * percentage;
+                } else {
+                  // For infinite stock, percentage is treated as fixed value
+                  actualTransferAmount = parsedPercentage;
+                }
+              }
             } else {
-              // For infinite stock, percentage is treated as fixed value
-              actualTransferAmount = parseFloat(percentageStr);
+              const parsedNumber = Number(transferAmountRaw);
+              actualTransferAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
             }
-          } else {
-            actualTransferAmount = Number(transferAmountRaw);
-          }
 
-          const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
-              fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
-          fromStock.simulationAmount = Math.max(0, currentAmount + actualTransferAmount);
+          const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ? 
+              fromStock.simulationAmount : (function() {
+                const parsed = parseFloat(fromStock.simulationAmount);
+                return !isNaN(parsed) ? parsed : 0;
+              })();
+          fromStock.simulationAmount = Math.max(0, currentAmount + (isNaN(actualTransferAmount) ? 0 : actualTransferAmount));
           console.log(`Self-connection on ${fromStock.name}: Added ${actualTransferAmount}, New amount: ${fromStock.simulationAmount}`);
         } else {
           // Normal connection processing (source and destination are different)
@@ -1481,20 +1507,30 @@ const PaperCanvas = () => {
           if (!isFromInfinite) { // Only calculate deduct amount if source is not infinite
             if (typeof deductAmountRaw === 'string' && deductAmountRaw.includes('%')) {
               // Percentage-based deduction
-              const percentageStr = deductAmountRaw.replace('%', '');
-              const percentage = parseFloat(percentageStr) / 100;
-              actualDeductAmount = fromStock.simulationAmount * percentage;
+              const percentageStr = deductAmountRaw.replace('%', '').trim();
+              const parsedPercentage = parseFloat(percentageStr);
+              if (isNaN(parsedPercentage)) {
+                console.warn(`Invalid percentage value: ${deductAmountRaw}, defaulting to 0`);
+                actualDeductAmount = 0;
+              } else {
+                const percentage = parsedPercentage / 100;
+                actualDeductAmount = fromStock.simulationAmount * percentage;
+              }
             } else {
               // Fixed amount deduction
-              actualDeductAmount = Number(deductAmountRaw);
+              const parsedNumber = Number(deductAmountRaw);
+              actualDeductAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
             }
             
             // Check if source has sufficient amount for deduction, unless deduct amount is zero
             const isDeductZero = (typeof deductAmountRaw === 'string' && deductAmountRaw.replace('%', '').trim() === '0') || Number(deductAmountRaw) === 0;
 
             if (!isDeductZero) {
-              const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
-                fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+              const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ? 
+                fromStock.simulationAmount : (function() {
+                  const parsed = parseFloat(fromStock.simulationAmount);
+                  return !isNaN(parsed) ? parsed : 0;
+                })();
               
               if (currentAmount < actualDeductAmount) {
                 // If insufficient amount, limit deduction to available amount
@@ -1515,14 +1551,21 @@ const PaperCanvas = () => {
           if (!isToInfinite) { // Only calculate transfer amount if destination is not infinite
             if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
               // Percentage-based transfer
-              const percentageStr = transferAmountRaw.replace('%', '');
-              const percentage = parseFloat(percentageStr) / 100;
-              // For percentage transfers, we base it on the source stock's amount
-              // If source is infinite, use a fixed value instead of percentage
-              actualTransferAmount = isFromInfinite ? parseFloat(percentageStr) : fromStock.simulationAmount * percentage;
+              const percentageStr = transferAmountRaw.replace('%', '').trim();
+              const parsedPercentage = parseFloat(percentageStr);
+              if (isNaN(parsedPercentage)) {
+                console.warn(`Invalid percentage value: ${transferAmountRaw}, defaulting to 0`);
+                actualTransferAmount = 0;
+              } else {
+                const percentage = parsedPercentage / 100;
+                // For percentage transfers, we base it on the source stock's amount
+                // If source is infinite, use a fixed value instead of percentage
+                actualTransferAmount = isFromInfinite ? parsedPercentage : fromStock.simulationAmount * percentage;
+              }
             } else {
               // Fixed amount transfer - but limit to what was actually deducted
-              const requestedTransferAmount = Number(transferAmountRaw);
+              const parsedNumber = Number(transferAmountRaw);
+              const requestedTransferAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
               if (!isFromInfinite) {
                 // For finite sources, transfer amount should not exceed what was actually deducted
                 actualTransferAmount = Math.min(requestedTransferAmount, actualDeductAmount);
@@ -1536,10 +1579,13 @@ const PaperCanvas = () => {
           // Deduct from source's simulation amount (unless it's infinite)
           if (!isFromInfinite) {
             // Make sure simulation amount is a number
-            const currentAmount = typeof fromStock.simulationAmount === 'number' ? 
-              fromStock.simulationAmount : parseFloat(fromStock.simulationAmount);
+            const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ? 
+              fromStock.simulationAmount : (function() {
+                const parsed = parseFloat(fromStock.simulationAmount);
+                return !isNaN(parsed) ? parsed : 0;
+              })();
               
-            fromStock.simulationAmount = Math.max(0, currentAmount - actualDeductAmount);
+            fromStock.simulationAmount = Math.max(0, currentAmount - (isNaN(actualDeductAmount) ? 0 : actualDeductAmount));
               
             console.log(`Deducted ${actualDeductAmount} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`);
           }
@@ -1547,10 +1593,13 @@ const PaperCanvas = () => {
           // Add to destination's simulation amount (unless it's infinite)
           if (!isToInfinite) {
             // Make sure simulation amount is a number
-            const currentAmount = typeof toStock.simulationAmount === 'number' ? 
-              toStock.simulationAmount : parseFloat(toStock.simulationAmount);
+            const currentAmount = typeof toStock.simulationAmount === 'number' && !isNaN(toStock.simulationAmount) ? 
+              toStock.simulationAmount : (function() {
+                const parsed = parseFloat(toStock.simulationAmount);
+                return !isNaN(parsed) ? parsed : 0;
+              })();
               
-            toStock.simulationAmount = currentAmount + actualTransferAmount;
+            toStock.simulationAmount = currentAmount + (isNaN(actualTransferAmount) ? 0 : actualTransferAmount);
               
             console.log(`Added ${actualTransferAmount} to ${toStock.name}, new amount: ${toStock.simulationAmount}`);
           }
@@ -1950,7 +1999,10 @@ const PaperCanvas = () => {
                   type="number"
                   placeholder="Amount"
                   value={newStockAmount}
-                  onChange={e => setNewStockAmount(Number(e.target.value))}
+                  onChange={e => {
+                    const value = Number(e.target.value);
+                    setNewStockAmount(isNaN(value) ? 0 : value);
+                  }}
                   style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
                 />
               )}
@@ -2002,7 +2054,10 @@ const PaperCanvas = () => {
                       type="number"
                       placeholder="Enter amount"
                       value={editingItem?.amount || 0}
-                      onChange={e => setEditingItem({...editingItem, amount: Number(e.target.value)})}
+                      onChange={e => {
+                        const value = Number(e.target.value);
+                        setEditingItem({...editingItem, amount: isNaN(value) ? 0 : value});
+                      }}
                       style={{ width: '70%', padding: '4px' }}
                     />
                   </div>
@@ -2093,7 +2148,9 @@ const PaperCanvas = () => {
                         onChange={e => {
                           const value = e.target.value;
                           const isPercent = document.getElementById('deduct-percent-checkbox').checked;
-                          const newDeductAmount = isPercent ? `${value}%` : Number(value);
+                          const numericValue = Number(value);
+                          const validValue = isNaN(numericValue) ? 0 : numericValue;
+                          const newDeductAmount = isPercent ? `${validValue}%` : validValue;
                           setEditingItem({
                             ...editingItem, 
                             deductAmount: newDeductAmount,
@@ -2111,12 +2168,17 @@ const PaperCanvas = () => {
                           checked={typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%')}
                           onChange={e => {
                             const isPercent = e.target.checked;
-                            const currentValue = typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%')
-                              ? parseFloat(editingItem.deductAmount.replace('%', ''))
-                              : (editingItem?.deductAmount ?? 1);
+                            let currentValue;
+                            if (typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%')) {
+                              const parsed = parseFloat(editingItem.deductAmount.replace('%', ''));
+                              currentValue = isNaN(parsed) ? 1 : parsed;
+                            } else {
+                              const parsed = Number(editingItem?.deductAmount ?? 1);
+                              currentValue = isNaN(parsed) ? 1 : parsed;
+                            }
                             setEditingItem({
                               ...editingItem,
-                              deductAmount: isPercent ? `${currentValue}%` : Number(currentValue)
+                              deductAmount: isPercent ? `${currentValue}%` : currentValue
                             });
                           }}
                         />
@@ -2153,9 +2215,11 @@ const PaperCanvas = () => {
                         onChange={e => {
                           const value = e.target.value;
                           const isPercent = document.getElementById('transfer-percent-checkbox').checked;
+                          const numericValue = Number(value);
+                          const validValue = isNaN(numericValue) ? 0 : numericValue;
                           setEditingItem({
                             ...editingItem, 
-                            transferAmount: isPercent ? `${value}%` : Number(value)
+                            transferAmount: isPercent ? `${validValue}%` : validValue
                           });
                         }}
                         style={{ width: '60%', padding: '4px' }}
@@ -2170,12 +2234,17 @@ const PaperCanvas = () => {
                           checked={typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%')}
                           onChange={e => {
                             const isPercent = e.target.checked;
-                            const currentValue = typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%')
-                              ? parseFloat(editingItem.transferAmount.replace('%', ''))
-                              : (editingItem?.transferAmount ?? 1);
+                            let currentValue;
+                            if (typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%')) {
+                              const parsed = parseFloat(editingItem.transferAmount.replace('%', ''));
+                              currentValue = isNaN(parsed) ? 1 : parsed;
+                            } else {
+                              const parsed = Number(editingItem?.transferAmount ?? 1);
+                              currentValue = isNaN(parsed) ? 1 : parsed;
+                            }
                             setEditingItem({
                               ...editingItem,
-                              transferAmount: isPercent ? `${currentValue}%` : Number(currentValue)
+                              transferAmount: isPercent ? `${currentValue}%` : currentValue
                             });
                           }}
                         />

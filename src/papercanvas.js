@@ -2499,33 +2499,47 @@ const PaperCanvas = () => {
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'fixed', top: 0, left: 0 }}>
       {/* Robust style for SplitPane resizer cursor and pointer events */}
       <style>{`
-        .SplitPane .Resizer,
-        .Resizer,
-        .SplitPane-resizer {
+        /* React Resizable Panels styles */
+        [data-panel-resize-handle-enabled] {
           cursor: col-resize !important;
           pointer-events: auto !important;
           background-color: #e0e0e0;
           border: 1px solid #ccc;
           transition: all 0.2s ease;
+          width: 4px;
+          min-width: 4px;
+          max-width: 4px;
         }
-        .SplitPane .Resizer:hover,
-        .Resizer:hover,
-        .SplitPane-resizer:hover {
+        [data-panel-resize-handle-enabled]:hover {
           cursor: col-resize !important;
           background-color: #007acc;
           border-color: #005a9e;
         }
-        .SplitPane .Resizer:active,
-        .Resizer:active,
-        .SplitPane-resizer:active {
+        [data-panel-resize-handle-enabled]:active {
           cursor: col-resize !important;
           background-color: #005a9e;
           border-color: #004080;
         }
-        .SplitPane .Resizer[style*="pointer-events: none"],
-        .Resizer[style*="pointer-events: none"],
-        .SplitPane-resizer[style*="pointer-events: none"] {
+        /* Fallback for any resize handle */
+        [data-panel-resize-handle] {
+          cursor: col-resize !important;
           pointer-events: auto !important;
+          background-color: #e0e0e0;
+          border: 1px solid #ccc;
+          transition: all 0.2s ease;
+          width: 4px;
+          min-width: 4px;
+          max-width: 4px;
+        }
+        [data-panel-resize-handle]:hover {
+          cursor: col-resize !important;
+          background-color: #007acc;
+          border-color: #005a9e;
+        }
+        [data-panel-resize-handle]:active {
+          cursor: col-resize !important;
+          background-color: #005a9e;
+          border-color: #004080;
         }
         .stock-placement-cursor {
           cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='2' ry='2' fill='%234CAF50' fill-opacity='0.7' stroke='%23333' stroke-width='2'/%3E%3Ctext x='16' y='20' font-family='Arial' font-size='12' text-anchor='middle' fill='white'%3ES%3C/text%3E%3C/svg%3E") 16 16, crosshair;
@@ -2692,7 +2706,18 @@ const PaperCanvas = () => {
         </Panel>
         {jsonEditorVisible && (
           <>
-            <PanelResizeHandle />
+            <PanelResizeHandle 
+              style={{
+                width: '4px',
+                minWidth: '4px',
+                maxWidth: '4px',
+                cursor: 'col-resize',
+                backgroundColor: '#e0e0e0',
+                border: '1px solid #ccc',
+                transition: 'all 0.2s ease',
+                pointerEvents: 'auto'
+              }}
+            />
             <Panel defaultSize={30} minSize={20}>
               <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', zIndex: 2 }}>
             <Editor

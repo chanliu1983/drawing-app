@@ -171,6 +171,8 @@ const PaperCanvas = () => {
 
   const [simulationHistory, setSimulationHistory] = useState([]); // Track stock amounts over time
   const [showPlotPanel, setShowPlotPanel] = useState(false);
+  // Zoom state for Paper.js view
+  const [zoom, setZoom] = useState(1);
   const [selectedStockForPlot, setSelectedStockForPlot] = useState("");
   const [selectedStocksForSum, setSelectedStocksForSum] = useState([]); // For multiple stock selection
   const [plotMode, setPlotMode] = useState("single"); // "single" or "sum"
@@ -455,6 +457,13 @@ const PaperCanvas = () => {
 
   // This ref will track if Paper.js has been initialized
   const paperInitialized = useRef(false);
+
+  // Update Paper.js view zoom when zoom state changes
+  useEffect(() => {
+    if (paper && paper.view) {
+      paper.view.zoom = zoom;
+    }
+  }, [zoom]);
 
   // Initialize database and load available canvases
   useEffect(() => {
@@ -2412,7 +2421,7 @@ const PaperCanvas = () => {
         border: "1px solid #ccc",
         borderRadius: "5px",
         boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-        width: toolboxCollapsed ? "40px" : "300px",
+        width: toolboxCollapsed ? "80px" : "300px",
         transition: "width 0.3s ease",
         overflow: "hidden",
       }}
@@ -3933,6 +3942,18 @@ const PaperCanvas = () => {
           gap: "10px",
         }}
       >
+        {/* Zoom Slider */}
+        <label style={{ color: "#333", fontSize: "14px", fontWeight: "bold" }}>Zoom:</label>
+        <input
+          type="range"
+          min={0.2}
+          max={2}
+          step={0.01}
+          value={zoom}
+          onChange={e => setZoom(Number(e.target.value))}
+          style={{ width: "120px" }}
+        />
+        <span style={{ minWidth: 40, textAlign: "right", fontSize: 14 }}>{(zoom * 100).toFixed(0)}%</span>
         <label
           style={{
             color: "#333",

@@ -241,10 +241,9 @@ const PaperCanvas = () => {
     const toStockData = jsonData.boxes.find(box => box.id === toStockId);
     const connectionName = fromStockData && toStockData ? `${fromStockData.name} -> ${toStockData.name}` : `Connection ${maxId + 1}`;
 
-    // Default values for deductAmount and transferAmount
+    // Default values for amount
     // Using numbers by default for new connections
-    const deductAmount = 1;
-    const transferAmount = 1;
+    const amount = 1;
     
     const newConnection = {
       id: maxId + 1,
@@ -252,8 +251,7 @@ const PaperCanvas = () => {
       type: "feedback_loop",
       fromStockId: fromStockId,
       toStockId: toStockId,
-      deductAmount: deductAmount, // Amount deducted from source stock
-      transferAmount: transferAmount // Amount added to destination stock
+      amount: amount // Amount transferred from source to destination
     };
     // Find the stock groups for visual connection
     const fromStockGroup = paperState.current.boxes.find(box => box.stockId === fromStockId);
@@ -727,7 +725,8 @@ const PaperCanvas = () => {
           const parsed = parseFloat(stockData.simulationAmount);
           simAmount = !isNaN(parsed) ? parsed.toFixed(3) : '0.000';
         }
-        displayText = `${stockName}\n${simAmount} / ${stockData.amount}`;
+        const capacityText = stockData.capacity > 0 ? ` / ${stockData.capacity}` : '';
+        displayText = `${stockName}\n${simAmount} / ${stockData.amount}${capacityText}`;
         
         // Highlight changed amounts
         if (stockData.simulationAmount !== stockData.amount) {
@@ -737,7 +736,8 @@ const PaperCanvas = () => {
       }
       // Regular stocks
       else {
-        displayText = `${stockName}\n${stockData.amount}`;
+        const capacityText = stockData.capacity > 0 ? ` / ${stockData.capacity}` : '';
+        displayText = `${stockName}\n${stockData.amount}${capacityText}`;
       }
 
       // Create text label with simulation amount
@@ -1026,11 +1026,10 @@ const PaperCanvas = () => {
       let displayText = connectionData.name;
       
       // Default values if not specified - support both numeric and percentage values
-      const deductAmount = connectionData.deductAmount !== undefined ? connectionData.deductAmount : 1;
-      const transferAmount = connectionData.transferAmount !== undefined ? connectionData.transferAmount : 1;
+      const amount = connectionData.amount !== undefined ? connectionData.amount : 1;
       
       // Always show both amounts in the label
-      displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
+      displayText = `${connectionData.name} (${amount})`;
       nameLabel = new paper.PointText({
         point: labelPosition,
         content: displayText,
@@ -1078,12 +1077,11 @@ const PaperCanvas = () => {
              console.log('Self-connection groupConnectionData:', groupConnectionData);
              console.log('Self-connection connectionData fallback:', connectionData);
              if (groupConnectionData) {
-               // Ensure deductAmount and transferAmount are defined with defaults if missing
+               // Ensure amount is defined with a default if missing
                const enhancedData = {
                  ...groupConnectionData,
                  type: 'connection',
-                 deductAmount: groupConnectionData.deductAmount !== undefined ? groupConnectionData.deductAmount : 1,
-                 transferAmount: groupConnectionData.transferAmount !== undefined ? groupConnectionData.transferAmount : 1
+                 amount: groupConnectionData.amount !== undefined ? groupConnectionData.amount : 1
                };
                console.log("Selected self-connection with enhanced data:", enhancedData);
                setSelectedItem(enhancedData);
@@ -1109,11 +1107,11 @@ const PaperCanvas = () => {
          // Get connectionData from the group
          const groupConnectionData = event.target.parent?.connectionData || connectionData;
          if (groupConnectionData) {
-           // Ensure deductAmount and transferAmount are defined with defaults if missing
+           // Ensure amount is defined with defaults if missing
            const enhancedData = {
              ...groupConnectionData,
              type: 'connection',
-             deductAmount: groupConnectionData.deductAmount !== undefined ? groupConnectionData.deductAmount : 1,
+             amount: groupConnectionData.amount !== undefined ? groupConnectionData.amount : 1,
              transferAmount: groupConnectionData.transferAmount !== undefined ? groupConnectionData.transferAmount : 1
            };
            console.log("Selected connection with enhanced data:", enhancedData);
@@ -1214,8 +1212,7 @@ const PaperCanvas = () => {
       let displayText = connectionData.name;
       
       // Default values if not specified
-      const deductAmount = connectionData.deductAmount !== undefined ? connectionData.deductAmount : 1;
-      const transferAmount = connectionData.transferAmount !== undefined ? connectionData.transferAmount : 1;
+      const amount = connectionData.amount !== undefined ? connectionData.amount : 1;
       
       // Find the source and target stocks to check if they're infinite
       const fromStockId = connectionData.fromStockId;
@@ -1228,20 +1225,7 @@ const PaperCanvas = () => {
       const isFromInfinite = fromStock && fromStock.shape === 'circle';
       const isToInfinite = toStock && toStock.shape === 'circle';
       
-      // Customize label based on infinite stock connections
-      if (isFromInfinite && !isToInfinite) {
-        // From infinite to normal: only show transfer amount
-        displayText = `${connectionData.name} (∞/+${transferAmount})`;
-      } else if (!isFromInfinite && isToInfinite) {
-        // From normal to infinite: only show deduct amount
-        displayText = `${connectionData.name} (-${deductAmount}/∞)`;
-      } else if (isFromInfinite && isToInfinite) {
-        // Both infinite: show infinity symbols
-        displayText = `${connectionData.name} (∞/∞)`;
-      } else {
-        // Normal case: show both amounts
-        displayText = `${connectionData.name} (-${deductAmount}/+${transferAmount})`;
-      }
+      displayText = `${connectionData.name} (${amount})`;
       
       nameLabel = new paper.PointText({
         point: midPoint.add(new paper.Point(0, -10)),
@@ -1287,20 +1271,15 @@ const PaperCanvas = () => {
             const groupConnectionData = event.target.parent?.connectionData || connectionData;
             
             if (groupConnectionData) {
-              // Ensure deductAmount and transferAmount have default values if missing
-              // Preserve string format for percentage values
-              const deductAmount = groupConnectionData.deductAmount !== undefined ? 
-                groupConnectionData.deductAmount : 1;
-                
-              const transferAmount = groupConnectionData.transferAmount !== undefined ? 
-                groupConnectionData.transferAmount : 1;
+              // Ensure amount has a default value if missing
+              const amount = groupConnectionData.amount !== undefined ? 
+                groupConnectionData.amount : 1;
               
               // Create a properly initialized selection object
               const selectionData = {
                 ...groupConnectionData,
                 type: 'connection',
-                deductAmount: deductAmount,
-                transferAmount: transferAmount
+                amount: amount
               };
               
               console.log("Selected connection with initialized values:", selectionData);
@@ -1320,10 +1299,10 @@ const PaperCanvas = () => {
         const groupConnectionData = event.target.parent?.connectionData || connectionData;
         
         if (groupConnectionData) {
-          // Ensure deductAmount and transferAmount have default values if missing
+          // Ensure amount has default values if missing
           // Preserve string format for percentage values
-          const deductAmount = groupConnectionData.deductAmount !== undefined ? 
-            groupConnectionData.deductAmount : 1;
+          const amount = groupConnectionData.amount !== undefined ?
+  groupConnectionData.amount : 1;
             
           const transferAmount = groupConnectionData.transferAmount !== undefined ? 
             groupConnectionData.transferAmount : 1;
@@ -1332,7 +1311,7 @@ const PaperCanvas = () => {
           const selectionData = {
             ...groupConnectionData,
             type: 'connection',
-            deductAmount: deductAmount,
+            amount: amount,
             transferAmount: transferAmount
           };
           
@@ -1400,108 +1379,7 @@ const PaperCanvas = () => {
     }
   };
 
-  const logSimulationStep = () => {
-    console.log("--- Logging Simulation Step ---");
 
-    const initialAmounts = {};
-    jsonData.boxes.forEach(box => {
-      initialAmounts[box.id] = box.amount || 0;
-    });
-
-    // Log initial state
-    console.log("Initial Simulation Amounts:", initialAmounts);
-
-    const connections = jsonData.connections || [];
-
-    // Group connections by type for ordered processing
-    const outflowFromCircles = connections.filter(conn => {
-      const fromBox = jsonData.boxes.find(b => b.id === conn.from); 
-      return fromBox && fromBox.shape === 'circle';
-    });
-
-    const inflowToCircles = connections.filter(conn => {
-      const toBox = jsonData.boxes.find(b => b.id === conn.to);
-      return toBox && toBox.shape === 'circle';
-    });
-
-    const otherConnections = connections.filter(conn => {
-      const fromBox = jsonData.boxes.find(b => b.id === conn.from);
-      const toBox = jsonData.boxes.find(b => b.id === conn.to);
-      return fromBox && toBox && fromBox.shape !== 'circle' && toBox.shape !== 'circle';
-    });
-
-    const processConnection = (conn, type) => {
-      console.log(`\nProcessing ${type} connection:`, conn.name);
-      const fromStock = jsonData.boxes.find(b => b.id === conn.from);
-      const toStock = jsonData.boxes.find(b => b.id === conn.to);
-
-      if (!fromStock || !toStock) {
-        console.log("Skipping connection due to missing stock.");
-        return;
-      }
-
-      const fromStockAmount = initialAmounts[fromStock.id] || 0;
-      const toStockAmount = initialAmounts[toStock.id] || 0;
-      console.log(`Before - ${fromStock.name}: ${fromStockAmount}, ${toStock.name}: ${toStockAmount}`);
-
-      let actualDeductAmount = 0;
-      let actualTransferAmount = 0;
-
-      // Special handling for self-connections
-      if (conn.from === conn.to) {
-        if (typeof conn.transferAmount === 'string' && conn.transferAmount.includes('%')) {
-          const percent = parseFloat(conn.transferAmount) / 100;
-          actualTransferAmount = fromStockAmount * percent;
-        } else {
-          actualTransferAmount = conn.transferAmount;
-        }
-        console.log(`Self-connection on ${fromStock.name}. Transfer amount: ${actualTransferAmount}`);
-        console.log(`After - ${fromStock.name}: ${fromStockAmount + actualTransferAmount}`);
-        return;
-      }
-
-      // Deduction logic
-      if (typeof conn.deductAmount === 'string' && conn.deductAmount.includes('%')) {
-        const percent = parseFloat(conn.deductAmount) / 100;
-        actualDeductAmount = fromStockAmount * percent;
-      } else {
-        actualDeductAmount = conn.deductAmount;
-      }
-
-      const isDeductZero = (typeof conn.deductAmount === 'string' && conn.deductAmount.replace('%', '').trim() === '0') || Number(conn.deductAmount) === 0;
-      if (!fromStock.isInfinite && !isDeductZero) {
-        actualDeductAmount = Math.min(fromStockAmount, actualDeductAmount);
-      }
-      console.log(`Deducting ${actualDeductAmount} from ${fromStock.name}`);
-
-      // Transfer logic
-      if (conn.deductEqualsTransfer) {
-        actualTransferAmount = actualDeductAmount;
-      } else if (typeof conn.transferAmount === 'string' && conn.transferAmount.includes('%')) {
-        const percent = parseFloat(conn.transferAmount) / 100;
-        actualTransferAmount = actualDeductAmount * percent;
-      } else {
-        actualTransferAmount = conn.transferAmount;
-      }
-      console.log(`Transferring ${actualTransferAmount} to ${toStock.name}`);
-
-      const newFromAmount = fromStock.isInfinite ? fromStockAmount : fromStockAmount - actualDeductAmount;
-      const newToAmount = toStockAmount + actualTransferAmount;
-
-      console.log(`After - ${fromStock.name}: ${newFromAmount}, ${toStock.name}: ${newToAmount}`);
-    };
-
-    console.log("--- Processing Outflow from Circles ---");
-    outflowFromCircles.forEach(conn => processConnection(conn, "Outflow"));
-
-    console.log("--- Processing Stock-to-Stock Connections ---");
-    otherConnections.forEach(conn => processConnection(conn, "Stock-to-Stock"));
-
-    console.log("--- Processing Inflow to Circles ---");
-    inflowToCircles.forEach(conn => processConnection(conn, "Inflow"));
-
-    console.log("--- End of Simulation Step Log ---");
-  };
 
   const runSimulation = () => {
     if (!jsonData || !jsonData.connections || !jsonData.boxes) return;
@@ -1554,158 +1432,135 @@ const PaperCanvas = () => {
       // Check if this is a self-connection
       const isSelfConnection = connection.fromStockId === connection.toStockId;
       console.log(`Processing connection ${connection.name} (ID: ${connection.id})`, {
-        fromId: connection.fromStockId, 
+        fromId: connection.fromStockId,
         toId: connection.toStockId,
         isSelfConnection,
-        deductAmount: connection.deductAmount,
-        transferAmount: connection.transferAmount
+        amount: connection.amount
       });
-      
+
       // Preserve the original format (number or percentage string)
-      const deductAmountRaw = connection.deductAmount !== undefined && connection.deductAmount !== null ? 
-        connection.deductAmount : 1;
-      const transferAmountRaw = connection.transferAmount !== undefined && connection.transferAmount !== null ? 
-        connection.transferAmount : 1;
+      const amountRaw = connection.amount !== undefined && connection.amount !== null ?
+        connection.amount : 1;
       
       if (fromStock && toStock) {
         // Special handling for self-connections
         if (connection.fromStockId === connection.toStockId) {
-          const transferAmountRaw = connection.transferAmount;
-          let actualTransferAmount = 0;
-          if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
-              const percentageStr = transferAmountRaw.replace('%', '').trim();
-              const parsedPercentage = parseFloat(percentageStr);
-              if (isNaN(parsedPercentage)) {
-                console.warn(`Invalid percentage value: ${transferAmountRaw}, defaulting to 0`);
-                actualTransferAmount = 0;
-              } else {
-                const percentage = parsedPercentage / 100;
-                if (fromStock.shape !== 'circle') {
-                  actualTransferAmount = fromStock.simulationAmount * percentage;
-                } else {
-                  // For infinite stock, percentage is treated as fixed value
-                  actualTransferAmount = parsedPercentage;
-                }
-              }
+          let actualAmount = 0;
+          if (typeof amountRaw === 'string' && amountRaw.includes('%')) {
+            const percentageStr = amountRaw.replace('%', '').trim();
+            const parsedPercentage = parseFloat(percentageStr);
+            if (isNaN(parsedPercentage)) {
+              console.warn(`Invalid percentage value: ${amountRaw}, defaulting to 0`);
+              actualAmount = 0;
             } else {
-              const parsedNumber = Number(transferAmountRaw);
-              actualTransferAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
+              const percentage = parsedPercentage / 100;
+              if (fromStock.shape !== 'circle') {
+                actualAmount = fromStock.simulationAmount * percentage;
+              } else {
+                // For infinite stock, percentage is treated as fixed value
+                actualAmount = parsedPercentage;
+              }
             }
+          } else {
+            const parsedNumber = Number(amountRaw);
+            actualAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
+          }
 
-          const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ? 
-              fromStock.simulationAmount : (function() {
-                const parsed = parseFloat(fromStock.simulationAmount);
-                return !isNaN(parsed) ? parsed : 0;
-              })();
-          fromStock.simulationAmount = Math.max(0, currentAmount + (isNaN(actualTransferAmount) ? 0 : actualTransferAmount));
-          console.log(`Self-connection on ${fromStock.name}: Added ${actualTransferAmount}, New amount: ${fromStock.simulationAmount}`);
+          const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ?
+            fromStock.simulationAmount : (function() {
+              const parsed = parseFloat(fromStock.simulationAmount);
+              return !isNaN(parsed) ? parsed : 0;
+            })();
+          fromStock.simulationAmount = Math.max(0, currentAmount + (isNaN(actualAmount) ? 0 : actualAmount));
+          console.log(`Self-connection on ${fromStock.name}: Added ${actualAmount}, New amount: ${fromStock.simulationAmount}`);
         } else {
           // Normal connection processing (source and destination are different)
           const isFromInfinite = fromStock.shape === 'circle';
           const isToInfinite = toStock.shape === 'circle';
-          const deductAmountRaw = connection.deductAmount;
-          const transferAmountRaw = connection.transferAmount;
 
-          // Calculate actual deduct amount based on whether it's percentage or fixed
-          let actualDeductAmount = 0;
-          if (!isFromInfinite) { // Only calculate deduct amount if source is not infinite
-            if (typeof deductAmountRaw === 'string' && deductAmountRaw.includes('%')) {
-              // Percentage-based deduction
-              const percentageStr = deductAmountRaw.replace('%', '').trim();
-              const parsedPercentage = parseFloat(percentageStr);
-              if (isNaN(parsedPercentage)) {
-                console.warn(`Invalid percentage value: ${deductAmountRaw}, defaulting to 0`);
-                actualDeductAmount = 0;
-              } else {
-                const percentage = parsedPercentage / 100;
-                actualDeductAmount = fromStock.simulationAmount * percentage;
-              }
+          let actualAmount = 0;
+          if (typeof amountRaw === 'string' && amountRaw.includes('%')) {
+            const percentageStr = amountRaw.replace('%', '').trim();
+            const parsedPercentage = parseFloat(percentageStr);
+            if (isNaN(parsedPercentage)) {
+              console.warn(`Invalid percentage value: ${amountRaw}, defaulting to 0`);
+              actualAmount = 0;
             } else {
-              // Fixed amount deduction
-              const parsedNumber = Number(deductAmountRaw);
-              actualDeductAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
+              const percentage = parsedPercentage / 100;
+              if (isFromInfinite) {
+                actualAmount = parsedPercentage;
+              } else {
+                actualAmount = fromStock.simulationAmount * percentage;
+              }
             }
-            
-            // Check if source has sufficient amount for deduction, unless deduct amount is zero
-            const isDeductZero = (typeof deductAmountRaw === 'string' && deductAmountRaw.replace('%', '').trim() === '0') || Number(deductAmountRaw) === 0;
+          } else {
+            const parsedNumber = Number(amountRaw);
+            actualAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
+          }
 
-            if (!isDeductZero) {
-              const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ? 
+          if (!isFromInfinite) {
+            const isAmountZero = (typeof amountRaw === 'string' && amountRaw.replace('%', '').trim() === '0') || Number(amountRaw) === 0;
+            if (!isAmountZero) {
+              const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ?
                 fromStock.simulationAmount : (function() {
                   const parsed = parseFloat(fromStock.simulationAmount);
                   return !isNaN(parsed) ? parsed : 0;
                 })();
-              
-              if (currentAmount < actualDeductAmount) {
-                // If insufficient amount, limit deduction to available amount
-                actualDeductAmount = Math.max(0, currentAmount);
-                console.log(`Insufficient amount in ${fromStock.name}. Limited deduction to ${actualDeductAmount}`);
+
+              if (currentAmount < actualAmount) {
+                actualAmount = Math.max(0, currentAmount);
+                console.log(`Insufficient amount in ${fromStock.name}. Limited amount to ${actualAmount}`);
               }
-              
-              // Skip this connection entirely if no amount can be deducted
-              if (actualDeductAmount <= 0) {
-                console.log(`Connection from ${fromStock.name} to ${toStock.name} is inactive - no deductible amount`);
-                return; // Skip this connection
+
+              if (actualAmount <= 0) {
+                console.log(`Connection from ${fromStock.name} to ${toStock.name} is inactive - no amount`);
+                return;
               }
             }
           }
-          
-          // Calculate actual transfer amount based on whether it's percentage or fixed
-          let actualTransferAmount = 0;
-          if (!isToInfinite) { // Only calculate transfer amount if destination is not infinite
-            if (typeof transferAmountRaw === 'string' && transferAmountRaw.includes('%')) {
-              // Percentage-based transfer
-              const percentageStr = transferAmountRaw.replace('%', '').trim();
-              const parsedPercentage = parseFloat(percentageStr);
-              if (isNaN(parsedPercentage)) {
-                console.warn(`Invalid percentage value: ${transferAmountRaw}, defaulting to 0`);
-                actualTransferAmount = 0;
-              } else {
-                const percentage = parsedPercentage / 100;
-                // For percentage transfers, we base it on the source stock's amount
-                // If source is infinite, use a fixed value instead of percentage
-                actualTransferAmount = isFromInfinite ? parsedPercentage : fromStock.simulationAmount * percentage;
-              }
-            } else {
-              // Fixed amount transfer - but limit to what was actually deducted
-              const parsedNumber = Number(transferAmountRaw);
-              const requestedTransferAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
-              if (!isFromInfinite) {
-                // For finite sources, transfer amount should not exceed what was actually deducted
-                actualTransferAmount = Math.min(requestedTransferAmount, actualDeductAmount);
-              } else {
-                // For infinite sources, use the full requested transfer amount
-                actualTransferAmount = requestedTransferAmount;
-              }
-            }
-          }
-          
-          // Deduct from source's simulation amount (unless it's infinite)
-          if (!isFromInfinite) {
-            // Make sure simulation amount is a number
-            const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ? 
-              fromStock.simulationAmount : (function() {
-                const parsed = parseFloat(fromStock.simulationAmount);
-                return !isNaN(parsed) ? parsed : 0;
-              })();
-              
-            fromStock.simulationAmount = Math.max(0, currentAmount - (isNaN(actualDeductAmount) ? 0 : actualDeductAmount));
-              
-            console.log(`Deducted ${actualDeductAmount} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`);
-          }
-          
-          // Add to destination's simulation amount (unless it's infinite)
+
+          let amountToAdd = actualAmount;
+
           if (!isToInfinite) {
-            // Make sure simulation amount is a number
-            const currentAmount = typeof toStock.simulationAmount === 'number' && !isNaN(toStock.simulationAmount) ? 
+            const currentToAmount = typeof toStock.simulationAmount === 'number' && !isNaN(toStock.simulationAmount) ?
               toStock.simulationAmount : (function() {
                 const parsed = parseFloat(toStock.simulationAmount);
                 return !isNaN(parsed) ? parsed : 0;
               })();
-              
-            toStock.simulationAmount = currentAmount + (isNaN(actualTransferAmount) ? 0 : actualTransferAmount);
-              
-            console.log(`Added ${actualTransferAmount} to ${toStock.name}, new amount: ${toStock.simulationAmount}`);
+
+            const capacity = toStock.capacity > 0 ? toStock.capacity : Infinity;
+            const remainingCapacity = capacity - currentToAmount;
+
+            if (remainingCapacity <= 0) {
+              console.log(`Stock ${toStock.name} is full, no amount added.`);
+              return; // Stop processing this connection
+            }
+
+            amountToAdd = Math.min(actualAmount, remainingCapacity);
+          }
+
+          if (!isFromInfinite) {
+            const currentFromAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ?
+              fromStock.simulationAmount : (function() {
+                const parsed = parseFloat(fromStock.simulationAmount);
+                return !isNaN(parsed) ? parsed : 0;
+              })();
+
+            const amountToDeduct = Math.min(currentFromAmount, amountToAdd);
+
+            fromStock.simulationAmount = Math.max(0, currentFromAmount - (isNaN(amountToDeduct) ? 0 : amountToDeduct));
+            console.log(`Deducted ${amountToDeduct} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`);
+            amountToAdd = amountToDeduct; // The actual amount added cannot exceed what was deducted
+          }
+
+          if (!isToInfinite) {
+            const currentToAmount = typeof toStock.simulationAmount === 'number' && !isNaN(toStock.simulationAmount) ?
+              toStock.simulationAmount : (function() {
+                const parsed = parseFloat(toStock.simulationAmount);
+                return !isNaN(parsed) ? parsed : 0;
+              })();
+            toStock.simulationAmount = currentToAmount + (isNaN(amountToAdd) ? 0 : amountToAdd);
+            console.log(`Added ${amountToAdd} to ${toStock.name}, new amount: ${toStock.simulationAmount}`);
           }
         }
       }
@@ -2165,6 +2020,19 @@ const PaperCanvas = () => {
                       style={{ width: '70%', padding: '4px' }}
                     />
                   </div>
+                  <div style={{ marginBottom: '6px' }}>
+                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Capacity (0 for infinite):</label>
+                    <input
+                      type="number"
+                      placeholder="Enter capacity"
+                      value={editingItem?.capacity || 0}
+                      onChange={e => {
+                        const value = Number(e.target.value);
+                        setEditingItem({...editingItem, capacity: isNaN(value) ? 0 : value});
+                      }}
+                      style={{ width: '70%', padding: '4px' }}
+                    />
+                  </div>
                   <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
                     <button
                       style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
@@ -2176,7 +2044,7 @@ const PaperCanvas = () => {
                             ...jsonData,
                             boxes: jsonData.boxes.map(box => 
                               box.id === selectedItem.id 
-                                ? { ...box, name: editingItem.name, amount: editingItem.amount }
+                                ? { ...box, name: editingItem.name, amount: editingItem.amount, capacity: editingItem.capacity }
                                 : box
                             )
                           };
@@ -2241,24 +2109,23 @@ const PaperCanvas = () => {
                     />
                   </div>
                   <div style={{ marginBottom: '6px' }}>
-                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Deduct Amount:</label>
+                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Amount:</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                       <input
                         type="number"
-                        placeholder="Amount to deduct from source"
-                        value={typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%') 
-                          ? editingItem.deductAmount.replace('%', '') 
-                          : editingItem?.deductAmount ?? 1}
+                        placeholder="Amount to transfer"
+                        value={typeof editingItem?.amount === 'string' && editingItem.amount.includes('%') 
+                          ? editingItem.amount.replace('%', '') 
+                          : editingItem?.amount ?? 1}
                         onChange={e => {
                           const value = e.target.value;
-                          const isPercent = document.getElementById('deduct-percent-checkbox').checked;
+                          const isPercent = document.getElementById('amount-percent-checkbox').checked;
                           const numericValue = Number(value);
                           const validValue = isNaN(numericValue) ? 0 : numericValue;
-                          const newDeductAmount = isPercent ? `${validValue}%` : validValue;
+                          const newAmount = isPercent ? `${validValue}%` : validValue;
                           setEditingItem({
                             ...editingItem, 
-                            deductAmount: newDeductAmount,
-                            transferAmount: editingItem?.deductEqualsTransfer ? newDeductAmount : editingItem?.transferAmount
+                            amount: newAmount
                           });
                         }}
                         style={{ width: '60%', padding: '4px' }}
@@ -2267,92 +2134,26 @@ const PaperCanvas = () => {
                       />
                       <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                         <input
-                          id="deduct-percent-checkbox"
+                          id="amount-percent-checkbox"
                           type="checkbox"
-                          checked={typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%')}
+                          checked={typeof editingItem?.amount === 'string' && editingItem.amount.includes('%')}
                           onChange={e => {
                             const isPercent = e.target.checked;
                             let currentValue;
-                            if (typeof editingItem?.deductAmount === 'string' && editingItem.deductAmount.includes('%')) {
-                              const parsed = parseFloat(editingItem.deductAmount.replace('%', ''));
+                            if (typeof editingItem?.amount === 'string' && editingItem.amount.includes('%')) {
+                              const parsed = parseFloat(editingItem.amount.replace('%', ''));
                               currentValue = isNaN(parsed) ? 1 : parsed;
                             } else {
-                              const parsed = Number(editingItem?.deductAmount ?? 1);
+                              const parsed = Number(editingItem?.amount ?? 1);
                               currentValue = isNaN(parsed) ? 1 : parsed;
                             }
                             setEditingItem({
                               ...editingItem,
-                              deductAmount: isPercent ? `${currentValue}%` : currentValue
+                              amount: isPercent ? `${currentValue}%` : currentValue
                             });
                           }}
                         />
-                        <label htmlFor="deduct-percent-checkbox" style={{ fontSize: '12px' }}>%</label>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: '6px' }}>
-                    <input
-                      id="deduct-equals-transfer-checkbox"
-                      type="checkbox"
-                      checked={editingItem?.deductEqualsTransfer ?? false}
-                      onChange={e => {
-                        const isChecked = e.target.checked;
-                        setEditingItem({
-                          ...editingItem,
-                          deductEqualsTransfer: isChecked,
-                          transferAmount: isChecked ? editingItem.deductAmount : editingItem.transferAmount
-                        });
-                      }}
-                    />
-                    <label htmlFor="deduct-equals-transfer-checkbox" style={{ fontSize: '12px' }}>Deduct equals Transfer</label>
-                  </div>
-                  <div style={{ marginBottom: '6px' }}>
-                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Transfer Amount:</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <input
-                        type="number"
-                        placeholder="Amount to add to destination"
-                        disabled={editingItem?.deductEqualsTransfer}
-                        value={typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%') 
-                          ? editingItem.transferAmount.replace('%', '') 
-                          : editingItem?.transferAmount ?? 1}
-                        onChange={e => {
-                          const value = e.target.value;
-                          const isPercent = document.getElementById('transfer-percent-checkbox').checked;
-                          const numericValue = Number(value);
-                          const validValue = isNaN(numericValue) ? 0 : numericValue;
-                          setEditingItem({
-                            ...editingItem, 
-                            transferAmount: isPercent ? `${validValue}%` : validValue
-                          });
-                        }}
-                        style={{ width: '60%', padding: '4px' }}
-                        min="0"
-                        step="0.1"
-                      />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <input
-                          id="transfer-percent-checkbox"
-                          type="checkbox"
-                          disabled={editingItem?.deductEqualsTransfer}
-                          checked={typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%')}
-                          onChange={e => {
-                            const isPercent = e.target.checked;
-                            let currentValue;
-                            if (typeof editingItem?.transferAmount === 'string' && editingItem.transferAmount.includes('%')) {
-                              const parsed = parseFloat(editingItem.transferAmount.replace('%', ''));
-                              currentValue = isNaN(parsed) ? 1 : parsed;
-                            } else {
-                              const parsed = Number(editingItem?.transferAmount ?? 1);
-                              currentValue = isNaN(parsed) ? 1 : parsed;
-                            }
-                            setEditingItem({
-                              ...editingItem,
-                              transferAmount: isPercent ? `${currentValue}%` : currentValue
-                            });
-                          }}
-                        />
-                        <label htmlFor="transfer-percent-checkbox" style={{ fontSize: '12px' }}>%</label>
+                        <label htmlFor="amount-percent-checkbox" style={{ fontSize: '12px' }}>%</label>
                       </div>
                     </div>
                   </div>
@@ -2370,30 +2171,20 @@ const PaperCanvas = () => {
                         const safeEditingItem = {
                           ...editingItem,
                           name: editingItem?.name || "Unnamed Connection",
-                          deductAmount: editingItem?.deductAmount !== undefined && editingItem?.deductAmount !== null && editingItem?.deductAmount !== '' ? 
-                            editingItem.deductAmount : 1,
-                          transferAmount: editingItem?.transferAmount !== undefined && editingItem?.transferAmount !== null && editingItem?.transferAmount !== '' ? 
-                            editingItem.transferAmount : 1,
-                          deductEqualsTransfer: editingItem?.deductEqualsTransfer ?? false
+                          amount: editingItem?.amount !== undefined && editingItem?.amount !== null && editingItem?.amount !== '' ? 
+                            editingItem.amount : 1
                         };
                         console.log("Safe editing item with defaults:", safeEditingItem);
                         
-                        // Validate deduct amount (can be number or percentage string)
-                        const isValidDeductAmount = typeof safeEditingItem.deductAmount === 'number' ? 
-                          safeEditingItem.deductAmount >= 0 : 
-                          typeof safeEditingItem.deductAmount === 'string' && 
-                          safeEditingItem.deductAmount.includes('%') && 
-                          parseFloat(safeEditingItem.deductAmount) >= 0;
-                          
-                        // Validate transfer amount (can be number or percentage string)
-                        const isValidTransferAmount = typeof safeEditingItem.transferAmount === 'number' ? 
-                          safeEditingItem.transferAmount >= 0 : 
-                          typeof safeEditingItem.transferAmount === 'string' && 
-                          safeEditingItem.transferAmount.includes('%') && 
-                          parseFloat(safeEditingItem.transferAmount) >= 0;
+                        // Validate amount (can be number or percentage string)
+                        const isValidAmount = typeof safeEditingItem.amount === 'number' ? 
+                          safeEditingItem.amount >= 0 : 
+                          typeof safeEditingItem.amount === 'string' && 
+                          safeEditingItem.amount.includes('%') && 
+                          parseFloat(safeEditingItem.amount) >= 0;
                         
                         if (safeEditingItem.name && safeEditingItem.name.trim() !== '' && 
-                            isValidDeductAmount && isValidTransferAmount) {
+                            isValidAmount) {
                           console.log("Connection validation passed, saving changes...");
                           
                           // Update the JSON data using the safe values we created
@@ -2406,9 +2197,7 @@ const PaperCanvas = () => {
                                 return { 
                                   ...conn, 
                                   name: safeEditingItem.name, 
-                                  deductAmount: safeEditingItem.deductAmount, 
-                                  transferAmount: safeEditingItem.transferAmount, 
-                                  deductEqualsTransfer: safeEditingItem.deductEqualsTransfer 
+                                  amount: safeEditingItem.amount
                                 };
                               }
                               return conn;
@@ -2421,18 +2210,14 @@ const PaperCanvas = () => {
                           setSelectedItem({ 
                             ...selectedItem, 
                             name: safeEditingItem.name, 
-                            deductAmount: safeEditingItem.deductAmount, 
-                            transferAmount: safeEditingItem.transferAmount, 
-                            deductEqualsTransfer: safeEditingItem.deductEqualsTransfer 
+                            amount: safeEditingItem.amount
                           });
                           
                           // Update the editing item as well with the safe values
                           setEditingItem({ 
                             ...editingItem, 
                             name: safeEditingItem.name, 
-                            deductAmount: safeEditingItem.deductAmount, 
-                            transferAmount: safeEditingItem.transferAmount, 
-                            deductEqualsTransfer: safeEditingItem.deductEqualsTransfer 
+                            amount: safeEditingItem.amount
                           });
                           
                           // Then update the JSON data which will trigger both refreshes
@@ -2451,7 +2236,7 @@ const PaperCanvas = () => {
                         } else {
                           console.error("Validation failed:", {
                             name: safeEditingItem.name,
-                            deductAmount: safeEditingItem.deductAmount,
+                            
                             transferAmount: safeEditingItem.transferAmount
                           });
                           alert('Please fill in all fields with valid values before saving. Values must be valid numbers.');
@@ -2532,14 +2317,7 @@ const PaperCanvas = () => {
                 >
                   Run 1 Step
                 </button>
-                <button
-                  style={{ flex: 1, background: '#ffc107', color: 'black', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
-                  onClick={() => {
-                    logSimulationStep();
-                  }}
-                >
-                  Log Sim Step
-                </button>
+
                 <button
                   style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
                   onClick={() => {
@@ -2850,41 +2628,28 @@ const PaperCanvas = () => {
                 try {
                   const parsedValue = JSON.parse(value);
                   
-                  // Ensure connections have deductAmount and transferAmount properties
+                  // Ensure connections have amount property
                   if (parsedValue.connections) {
                     parsedValue.connections = parsedValue.connections.map(conn => {
                       // Preserve string format for percentage values
-                      let deductAmount = conn.deductAmount !== undefined ? conn.deductAmount : 1;
-                      let transferAmount = conn.transferAmount !== undefined ? conn.transferAmount : 1;
+                      let amount = conn.amount !== undefined ? conn.amount : 1;
                       
                       // If the value is a string and contains '%', keep it as a string
                       // Otherwise, ensure it's a number
-                      if (typeof deductAmount === 'string') {
-                        if (!deductAmount.includes('%')) {
-                          deductAmount = Number(deductAmount);
+                      if (typeof amount === 'string') {
+                        if (!amount.includes('%')) {
+                          amount = Number(amount);
                         }
-                      } else if (typeof deductAmount === 'number') {
+                      } else if (typeof amount === 'number') {
                         // Already a number, no conversion needed
-                      } else if (deductAmount !== undefined) {
+                      } else if (amount !== undefined) {
                         // Convert other types to number
-                        deductAmount = Number(deductAmount);
-                      }
-                      
-                      if (typeof transferAmount === 'string') {
-                        if (!transferAmount.includes('%')) {
-                          transferAmount = Number(transferAmount);
-                        }
-                      } else if (typeof transferAmount === 'number') {
-                        // Already a number, no conversion needed
-                      } else if (transferAmount !== undefined) {
-                        // Convert other types to number
-                        transferAmount = Number(transferAmount);
+                        amount = Number(amount);
                       }
                       
                       return {
                         ...conn,
-                        deductAmount: deductAmount,
-                        transferAmount: transferAmount
+                        amount: amount
                       };
                     });
                   }

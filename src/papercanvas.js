@@ -269,6 +269,10 @@ const PaperCanvas = () => {
       fromStockId: fromStockId,
       toStockId: toStockId,
       amount: amount, // Amount transferred from source to destination
+      isOverflow: false, // New property: whether this is an overflow connection
+      order: maxId + 1, // New property: order in which connections are processed during simulation
+      // Note: A connection can only be either an overflow connection or have an amount, not both.
+      // If isOverflow is true, amount should be undefined.
     };
     // Find the stock groups for visual connection
     const fromStockGroup = paperState.current.boxes.find(
@@ -332,6 +336,8 @@ const PaperCanvas = () => {
   };
 
   // Helper function to ensure all boxes have simulationAmount initialized
+  // Note: This function initializes simulationAmount but does not enforce capacity limits
+  // Capacity limits are enforced during the simulation when amounts are transferred
   const ensureSimulationAmount = (data) => {
     if (data && data.boxes) {
       return {
@@ -1053,10 +1059,14 @@ const PaperCanvas = () => {
       boxCenter.y + controlOffset
     );
 
+    // Determine connection style based on connection type
+    const isOverflow = connectionData && connectionData.isOverflow;
+
     // Create the curved path
     const path = new paper.Path({
-      strokeColor: "black",
-      strokeWidth: 2,
+      strokeColor: isOverflow ? "blue" : "black", // Blue for overflow connections
+      strokeWidth: isOverflow ? 3 : 2, // Thicker line for overflow connections
+      dashArray: isOverflow ? [4, 2] : null, // Dashed line for overflow connections
     });
 
     path.moveTo(startPoint);
@@ -1075,15 +1085,17 @@ const PaperCanvas = () => {
 
     const arrowHead = new paper.Path({
       segments: [arrowTip, arrowLeft, arrowRight],
-      strokeColor: "black",
+      strokeColor: isOverflow ? "blue" : "black", // Match path color
       strokeWidth: 2,
-      fillColor: "black",
+      fillColor: isOverflow ? "blue" : "black", // Match path color
       closed: true,
     });
 
     // Add connection name label if provided
     let nameLabel = null;
     let labelHitBox = null;
+    let orderCircle = null;
+    
     if (connectionData && connectionData.name) {
       const labelPosition = new paper.Point(
         boxBounds.right + loopRadius,
@@ -1220,12 +1232,50 @@ const PaperCanvas = () => {
     if (labelHitBox) {
       labelHitBox.onMouseDown = handleDirectSelect;
     }
+    
+    // Add order number in a circle
+    if (connectionData && connectionData.order !== undefined) {
+      // Position the order circle near the loop
+      const circlePosition = new paper.Point(
+        boxBounds.right + loopRadius / 2,
+        boxCenter.y - loopRadius / 2
+      );
+      
+      // Create the circle
+      const circleRadius = 12;
+      const circle = new paper.Path.Circle({
+        center: circlePosition,
+        radius: circleRadius,
+        fillColor: isOverflow ? "lightblue" : "lightgray",
+        strokeColor: isOverflow ? "blue" : "black",
+        strokeWidth: 1
+      });
+      
+      // Add the order number text
+      const orderText = new paper.PointText({
+        point: circlePosition,
+        content: connectionData.order.toString(),
+        fillColor: "black",
+        fontSize: 10,
+        justification: "center",
+        fontWeight: "bold"
+      });
+      
+      // Center the text vertically
+      orderText.position.y += 3;
+      
+      // Group the circle and text
+      orderCircle = new paper.Group([circle, orderText]);
+      orderCircle.onMouseDown = handleDirectSelect;
+    }
 
-    const connectionGroup = nameLabel
-      ? labelHitBox
-        ? new paper.Group([path, arrowHead, nameLabel, labelHitBox])
-        : new paper.Group([path, arrowHead, nameLabel])
-      : new paper.Group([path, arrowHead]);
+    // Create the connection group with all elements
+    const connectionGroup = new paper.Group([path, arrowHead]);
+    
+    // Add optional elements if they exist
+    if (nameLabel) connectionGroup.addChild(nameLabel);
+    if (labelHitBox) connectionGroup.addChild(labelHitBox);
+    if (orderCircle) connectionGroup.addChild(orderCircle);
 
     if (connectionData) {
       connectionGroup.connectionData = connectionData;
@@ -1279,10 +1329,14 @@ const PaperCanvas = () => {
       handle1 = new paper.Point(start.x, (start.y + arrowBase.y) / 2);
       handle2 = new paper.Point(arrowBase.x, (start.y + arrowBase.y) / 2);
     }
+    // Determine connection style based on connection type
+    const isOverflow = connectionData && connectionData.isOverflow;
+
     const path = new paper.Path({
       segments: [new paper.Segment(start), new paper.Segment(arrowBase)],
-      strokeColor: "black",
-      strokeWidth: 2,
+      strokeColor: isOverflow ? "blue" : "black", // Blue for overflow connections
+      strokeWidth: isOverflow ? 3 : 2, // Thicker line for overflow connections
+      dashArray: isOverflow ? [4, 2] : null, // Dashed line for overflow connections
     });
     path.segments[0].handleOut = handle1.subtract(start);
     path.segments[1].handleIn = handle2.subtract(arrowBase);
@@ -1290,14 +1344,16 @@ const PaperCanvas = () => {
     const arrowTip = end;
     const arrowHead = new paper.Path({
       segments: [arrowTip, arrowLeft, arrowRight],
-      strokeColor: "black",
+      strokeColor: isOverflow ? "blue" : "black", // Match path color
       strokeWidth: 2,
-      fillColor: "black",
+      fillColor: isOverflow ? "blue" : "black", // Match path color
       closed: true,
     });
     // Add feedback loop name label if connection data is provided
     let nameLabel = null;
     let labelHitBox = null;
+    let orderCircle = null;
+    
     if (connectionData && connectionData.name) {
       const midPoint = start.add(arrowBase).divide(2);
       let displayText = connectionData.name;
@@ -1438,11 +1494,47 @@ const PaperCanvas = () => {
     if (labelHitBox) {
       labelHitBox.onMouseDown = handleDirectSelect;
     }
-    const connectionGroup = nameLabel
-      ? labelHitBox
-        ? new paper.Group([path, arrowHead, nameLabel, labelHitBox])
-        : new paper.Group([path, arrowHead, nameLabel])
-      : new paper.Group([path, arrowHead]);
+    
+    // Add order number in a circle
+    if (connectionData && connectionData.order !== undefined) {
+      // Position the order circle near the middle of the connection but offset to avoid overlap
+      const circlePosition = start.add(arrowBase).divide(2).add(new paper.Point(15, 15));
+      
+      // Create the circle
+      const circleRadius = 12;
+      const circle = new paper.Path.Circle({
+        center: circlePosition,
+        radius: circleRadius,
+        fillColor: isOverflow ? "lightblue" : "lightgray",
+        strokeColor: isOverflow ? "blue" : "black",
+        strokeWidth: 1
+      });
+      
+      // Add the order number text
+      const orderText = new paper.PointText({
+        point: circlePosition,
+        content: connectionData.order.toString(),
+        fillColor: "black",
+        fontSize: 10,
+        justification: "center",
+        fontWeight: "bold"
+      });
+      
+      // Center the text vertically
+      orderText.position.y += 3;
+      
+      // Group the circle and text
+      orderCircle = new paper.Group([circle, orderText]);
+      orderCircle.onMouseDown = handleDirectSelect;
+    }
+    
+    // Create the connection group with all elements
+    const connectionGroup = new paper.Group([path, arrowHead]);
+    
+    // Add optional elements if they exist
+    if (nameLabel) connectionGroup.addChild(nameLabel);
+    if (labelHitBox) connectionGroup.addChild(labelHitBox);
+    if (orderCircle) connectionGroup.addChild(orderCircle);
     if (connectionData) {
       connectionGroup.connectionData = connectionData;
     }
@@ -1520,41 +1612,31 @@ const PaperCanvas = () => {
       };
     });
 
-    // Group connections by type for ordered processing
-    const connections = [...jsonData.connections];
-    const outflowFromCircles = connections.filter((conn) => {
-      const fromStock = updatedBoxes.find((box) => box.id === conn.fromStockId);
-      return fromStock && fromStock.shape === "circle";
+    // Sort connections by order field to determine processing sequence
+    // This replaces the previous complex sorting logic
+    const orderedConnections = [...jsonData.connections].sort((a, b) => {
+      // Sort by order field (smaller order first)
+      // If order is not defined, fall back to ID for backward compatibility
+      const orderA = a.order !== undefined ? a.order : a.id;
+      const orderB = b.order !== undefined ? b.order : b.id;
+      return orderA - orderB;
     });
+    
+    // Log the ordered connections for debugging
+    console.log(
+      "Processing connections in order based on 'order' field:",
+      orderedConnections.map((conn) => ({ 
+        id: conn.id, 
+        name: conn.name, 
+        order: conn.order !== undefined ? conn.order : conn.id 
+      }))
+    );
 
-    const inflowToCircles = connections
-      .filter((conn) => {
-        const toStock = updatedBoxes.find((box) => box.id === conn.toStockId);
-        return toStock && toStock.shape === "circle";
-      })
-      .filter((conn) => {
-        // Exclude connections that are already in outflowFromCircles
-        const fromStock = updatedBoxes.find(
-          (box) => box.id === conn.fromStockId
-        );
-        return !(fromStock && fromStock.shape === "circle");
-      });
-
-    const otherConnections = connections.filter((conn) => {
-      const fromStock = updatedBoxes.find((box) => box.id === conn.fromStockId);
-      const toStock = updatedBoxes.find((box) => box.id === conn.toStockId);
-      return (
-        !(fromStock && fromStock.shape === "circle") &&
-        !(toStock && toStock.shape === "circle")
-      );
-    });
-
-    // Process connections in the specified order: outflow from circles, other connections, inflow to circles
-    const orderedConnections = [
-      ...outflowFromCircles,
-      ...otherConnections,
-      ...inflowToCircles,
-    ];
+    // Log the ordered connections for debugging
+    console.log(
+      "Processing connections in the following order:",
+      orderedConnections.map((conn) => ({ id: conn.id, name: conn.name }))
+    );
 
     // Process each connection in the ordered sequence
     orderedConnections.forEach((connection) => {
@@ -1617,10 +1699,22 @@ const PaperCanvas = () => {
                   const parsed = parseFloat(fromStock.simulationAmount);
                   return !isNaN(parsed) ? parsed : 0;
                 })();
-          fromStock.simulationAmount = Math.max(
-            0,
-            currentAmount + (isNaN(actualAmount) ? 0 : actualAmount)
+          // Calculate new amount but ensure it doesn't exceed capacity
+          const newAmount =
+            currentAmount + (isNaN(actualAmount) ? 0 : actualAmount);
+          const capacity =
+            fromStock.capacity > 0 ? fromStock.capacity : Infinity;
+          fromStock.simulationAmount = Math.min(
+            Math.max(0, newAmount),
+            capacity
           );
+
+          // Log if the amount was capped at capacity
+          if (newAmount > capacity && capacity !== Infinity) {
+            console.log(
+              `Self-connection: Stock ${fromStock.name} reached capacity limit of ${capacity}. Excess amount discarded.`
+            );
+          }
           console.log(
             `Self-connection on ${fromStock.name}: Added ${actualAmount}, New amount: ${fromStock.simulationAmount}`
           );
@@ -1697,12 +1791,77 @@ const PaperCanvas = () => {
             const capacity = toStock.capacity > 0 ? toStock.capacity : Infinity;
             const remainingCapacity = capacity - currentToAmount;
 
-            if (remainingCapacity <= 0) {
-              console.log(`Stock ${toStock.name} is full, no amount added.`);
-              return; // Stop processing this connection
+            // Handle overflow connections differently
+            // Overflow connections transfer excess amount beyond a stock's capacity
+            // The full overflow amount is always deducted from the source stock
+            // The target stock will receive as much as its capacity allows
+            // Note: A connection can only be either an overflow connection or have an amount, not both.
+            // For overflow connections, we ignore any amount value and transfer the full overflow amount.
+            if (connection.isOverflow) {
+              // For overflow connections, we don't limit by remaining capacity
+              // The amount is determined by the source stock's overflow beyond capacity
+              if (fromStock && fromStock.capacity > 0) {
+                const fromCapacity = fromStock.capacity;
+                const currentFromAmount =
+                  typeof fromStock.simulationAmount === "number" &&
+                  !isNaN(fromStock.simulationAmount)
+                    ? fromStock.simulationAmount
+                    : (function () {
+                        const parsed = parseFloat(fromStock.simulationAmount);
+                        return !isNaN(parsed) ? parsed : 0;
+                      })();
+
+                // Calculate overflow amount (amount beyond capacity)
+                const overflowAmount = Math.max(
+                  0,
+                  currentFromAmount - fromCapacity
+                );
+
+                if (overflowAmount > 0) {
+                  console.log(
+                    `Overflow detected in ${fromStock.name}: ${overflowAmount}`
+                  );
+                  // For self-connections, transfer all overflow amount (acts as a buffer)
+                  // Self-connections with overflow type will always transfer 100% of the overflow
+                  // This allows stocks to have a buffer that stores overflow and transfers it all
+                  if (isSelfConnection) {
+                    console.log(
+                      `Self-connection overflow: Transferring all overflow amount ${overflowAmount}`
+                    );
+                    actualAmount = overflowAmount;
+                  } else {
+                    // For overflow connections, we transfer the full overflow amount
+                    // Since a connection can only be either an overflow connection or have an amount (not both),
+                    // we ignore any amount value for overflow connections
+                    actualAmount = overflowAmount;
+                  }
+                } else {
+                  console.log(
+                    `No overflow in ${fromStock.name}, skipping overflow connection`
+                  );
+                  return; // No overflow, skip this connection
+                }
+              }
+            } else {
+              // Regular connection behavior
+              if (remainingCapacity <= 0) {
+                console.log(`Stock ${toStock.name} is full, no amount added.`);
+                return; // Stop processing this connection
+              }
             }
 
-            amountToAdd = Math.min(actualAmount, remainingCapacity);
+            // For regular connections, limit by remaining capacity
+            // For overflow connections, we transfer the full amount without limiting by remaining capacity
+            // This ensures all overflow is transferred to the target stock
+            if (connection.isOverflow) {
+              // For overflow connections, we set amountToAdd to actualAmount
+              // actualAmount is already set to overflowAmount for overflow connections
+              // This ensures the full overflow amount is transferred to the target stock
+              amountToAdd = actualAmount;
+            } else {
+              // Regular connections still respect the target's capacity
+              amountToAdd = Math.min(actualAmount, remainingCapacity);
+            }
           }
 
           if (!isFromInfinite) {
@@ -1715,16 +1874,57 @@ const PaperCanvas = () => {
                     return !isNaN(parsed) ? parsed : 0;
                   })();
 
-            const amountToDeduct = Math.min(currentFromAmount, amountToAdd);
+            // For overflow connections, handle deduction differently
+            if (connection.isOverflow) {
+              if (fromStock.capacity > 0) {
+                // For overflow connections, we deduct the overflow amount
+                // Calculate how much to deduct (the overflow amount)
+                const fromCapacity = fromStock.capacity;
+                const overflowAmount = Math.max(
+                  0,
+                  currentFromAmount - fromCapacity
+                );
 
-            fromStock.simulationAmount = Math.max(
-              0,
-              currentFromAmount - (isNaN(amountToDeduct) ? 0 : amountToDeduct)
-            );
-            console.log(
-              `Deducted ${amountToDeduct} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`
-            );
-            amountToAdd = amountToDeduct; // The actual amount added cannot exceed what was deducted
+                // For overflow connections, we always deduct the full overflow amount
+                // This ensures all overflow is removed from the source stock
+                const amountToDeduct = overflowAmount;
+
+                // Deduct the overflow amount from the source stock
+                fromStock.simulationAmount = Math.max(
+                  0,
+                  currentFromAmount -
+                    (isNaN(amountToDeduct) ? 0 : amountToDeduct)
+                );
+
+                console.log(
+                  `Overflow connection${
+                    isSelfConnection ? " (self)" : ""
+                  }: Deducted ${amountToDeduct} from ${
+                    fromStock.name
+                  }, new amount: ${fromStock.simulationAmount}`
+                );
+
+                // The amount to add to the target is the full overflow amount
+                // Note: The target's capacity will still be respected when actually adding
+                // We don't need to reassign amountToAdd here as it's already set to actualAmount earlier
+                // and actualAmount is already set to overflowAmount for overflow connections
+                // This ensures the full overflow amount is transferred to the target stock
+              }
+            } else {
+              // Regular connection behavior
+              const amountToDeduct = Math.min(currentFromAmount, amountToAdd);
+
+              fromStock.simulationAmount = Math.max(
+                0,
+                currentFromAmount - (isNaN(amountToDeduct) ? 0 : amountToDeduct)
+              );
+              console.log(
+                `Deducted ${amountToDeduct} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`
+              );
+              // For regular connections, the actual amount added cannot exceed what was deducted
+              // This ensures consistency between what's deducted from the source and what's added to the target
+              amountToAdd = amountToDeduct;
+            }
           }
 
           if (!isToInfinite) {
@@ -1736,8 +1936,41 @@ const PaperCanvas = () => {
                     const parsed = parseFloat(toStock.simulationAmount);
                     return !isNaN(parsed) ? parsed : 0;
                   })();
-            toStock.simulationAmount =
+            // Calculate new amount but ensure it doesn't exceed capacity
+            const newAmount =
               currentToAmount + (isNaN(amountToAdd) ? 0 : amountToAdd);
+            const capacity = toStock.capacity > 0 ? toStock.capacity : Infinity;
+
+            // For overflow connections, we need to handle excess differently
+            if (connection.isOverflow) {
+              // If this is an overflow connection, we still respect the capacity
+              // but we need to track how much was actually added vs. how much was attempted
+              const actualAdded =
+                Math.min(newAmount, capacity) - currentToAmount;
+              const excessAmount = Math.max(0, amountToAdd - actualAdded);
+
+              toStock.simulationAmount = Math.min(newAmount, capacity);
+
+              // Log the overflow transfer details
+              if (excessAmount > 0) {
+                console.log(
+                  `Overflow connection: Added ${actualAdded} to ${toStock.name}, but ${excessAmount} couldn't be added due to capacity limit.`
+                );
+                console.log(
+                  `Consider adding an overflow connection from ${toStock.name} to handle the excess.`
+                );
+              }
+            } else {
+              // Regular connection behavior - just cap at capacity
+              toStock.simulationAmount = Math.min(newAmount, capacity);
+
+              // Log if the amount was capped at capacity
+              if (newAmount > capacity && capacity !== Infinity) {
+                console.log(
+                  `Stock ${toStock.name} reached capacity limit of ${capacity}. Excess amount discarded.`
+                );
+              }
+            }
             console.log(
               `Added ${amountToAdd} to ${toStock.name}, new amount: ${toStock.simulationAmount}`
             );
@@ -2524,11 +2757,14 @@ const PaperCanvas = () => {
                           setEditingItem({
                             ...editingItem,
                             amount: newAmount,
+                            // If amount is set, ensure isOverflow is false
+                            isOverflow: false
                           });
                         }}
                         style={{ width: "60%", padding: "4px" }}
                         min="0"
                         step="0.1"
+                        disabled={editingItem?.isOverflow || false}
                       />
                       <div
                         style={{
@@ -2576,6 +2812,69 @@ const PaperCanvas = () => {
                       </div>
                     </div>
                   </div>
+                  <div style={{ marginBottom: "6px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "5px",
+                      }}
+                    >
+                      <input
+                        id="overflow-checkbox"
+                        type="checkbox"
+                        checked={editingItem?.isOverflow || false}
+                        onChange={(e) => {
+                          const isOverflow = e.target.checked;
+                          setEditingItem({
+                            ...editingItem,
+                            isOverflow: isOverflow,
+                            // If isOverflow is true, reset amount
+                            amount: isOverflow ? undefined : (editingItem?.amount || 1)
+                          });
+                        }}
+                      />
+                      <label
+                        htmlFor="overflow-checkbox"
+                        style={{ fontSize: "12px" }}
+                      >
+                        Overflow connection (transfers excess amount beyond
+                        capacity)
+                      </label>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: "6px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "2px",
+                        fontWeight: "bold",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Processing Order:
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="Order for simulation processing"
+                      value={editingItem?.order ?? editingItem?.id ?? 1}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const numericValue = Number(value);
+                        const validValue = isNaN(numericValue) ? 1 : numericValue;
+                        setEditingItem({
+                          ...editingItem,
+                          order: validValue
+                        });
+                      }}
+                      style={{ width: "60%", padding: "4px" }}
+                      min="1"
+                      step="1"
+                    />
+                    <div style={{ fontSize: "11px", color: "#666", marginTop: "2px" }}>
+                      Connections are processed from lowest to highest order during simulation
+                    </div>
+                  </div>
                   <div
                     style={{ display: "flex", gap: "5px", marginBottom: "5px" }}
                   >
@@ -2600,24 +2899,32 @@ const PaperCanvas = () => {
 
                         // Safeguard: ensure editingItem has the right properties with valid values
                         // Now supporting both numeric values and percentage strings
+                        // A connection can only be either an overflow connection or have an amount, not both
                         const safeEditingItem = {
                           ...editingItem,
                           name: editingItem?.name || "Unnamed Connection",
-                          amount:
-                            editingItem?.amount !== undefined &&
-                            editingItem?.amount !== null &&
-                            editingItem?.amount !== ""
-                              ? editingItem.amount
-                              : 1,
+                          // If it's an overflow connection, amount should be undefined
+                          // Otherwise, ensure amount has a valid value
+                          amount: editingItem?.isOverflow
+                            ? undefined
+                            : (editingItem?.amount !== undefined &&
+                               editingItem?.amount !== null &&
+                               editingItem?.amount !== ""
+                                ? editingItem.amount
+                                : 1),
+                          isOverflow: editingItem?.isOverflow || false,
+                          // Ensure order has a valid value, defaulting to the connection's ID if not set
+                          order: editingItem?.order ?? selectedItem?.id ?? 1
                         };
                         console.log(
                           "Safe editing item with defaults:",
                           safeEditingItem
                         );
 
-                        // Validate amount (can be number or percentage string)
-                        const isValidAmount =
-                          typeof safeEditingItem.amount === "number"
+                        // Validate amount (can be number or percentage string) if not an overflow connection
+                        const isValidAmount = safeEditingItem.isOverflow
+                          ? true // Overflow connections don't need an amount validation
+                          : typeof safeEditingItem.amount === "number"
                             ? safeEditingItem.amount >= 0
                             : typeof safeEditingItem.amount === "string" &&
                               safeEditingItem.amount.includes("%") &&
@@ -2650,6 +2957,8 @@ const PaperCanvas = () => {
                                   ...conn,
                                   name: safeEditingItem.name,
                                   amount: safeEditingItem.amount,
+                                  isOverflow: safeEditingItem.isOverflow || false,
+                                  order: safeEditingItem.order ?? conn.id,
                                 };
                               }
                               return conn;
@@ -2663,6 +2972,8 @@ const PaperCanvas = () => {
                             ...selectedItem,
                             name: safeEditingItem.name,
                             amount: safeEditingItem.amount,
+                            isOverflow: safeEditingItem.isOverflow || false,
+                            order: safeEditingItem.order,
                           });
 
                           // Update the editing item as well with the safe values
@@ -2670,6 +2981,8 @@ const PaperCanvas = () => {
                             ...editingItem,
                             name: safeEditingItem.name,
                             amount: safeEditingItem.amount,
+                            isOverflow: safeEditingItem.isOverflow || false,
+                            order: safeEditingItem.order,
                           });
 
                           // Then update the JSON data which will trigger both refreshes

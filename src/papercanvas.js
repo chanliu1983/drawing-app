@@ -260,30 +260,38 @@ const PaperCanvas = () => {
     }
   };
 
+  // Helper function to generate unique IDs across both stocks and connections
+  const getNextUniqueId = () => {
+    const stockIds = jsonData.boxes.map((b) => b.id || 0);
+    const connectionIds = jsonData.connections.map((c) => c.id || 0);
+    const allIds = [...stockIds, ...connectionIds];
+    return Math.max(0, ...allIds) + 1;
+  };
+
   const createNewConnection = (fromStockId, toStockId) => {
-    const maxId = Math.max(0, ...jsonData.connections.map((c) => c.id || 0));
+    const newId = getNextUniqueId();
     const fromStockData = jsonData.boxes.find((box) => box.id === fromStockId);
     const toStockData = jsonData.boxes.find((box) => box.id === toStockId);
     const connectionName =
       fromStockData && toStockData
         ? `${fromStockData.name} -> ${toStockData.name}`
-        : `Connection ${maxId + 1}`;
+        : `Connection ${newId}`;
 
     // Default values for amount
     // Using numbers by default for new connections
     const amount = 1;
 
     const newConnection = {
-      id: maxId + 1,
+      id: newId,
       name: connectionName,
       type: "feedback_loop",
       fromStockId: fromStockId,
       toStockId: toStockId,
       amount: amount, // Amount transferred from source to destination
       isOverflow: false, // New property: whether this is an overflow connection
-      order: maxId + 1, // New property: order in which connections are processed during simulation
+      order: newId, // New property: order in which connections are processed during simulation
       // Note: A connection can only be either an overflow connection or have an amount, not both.
-      // If isOverflow is true, amount should be undefined.
+      // If isOverflow is true, amount should be 0.
     };
     // Find the stock groups for visual connection
     const fromStockGroup = paperState.current.boxes.find(
@@ -1079,9 +1087,9 @@ const PaperCanvas = () => {
     if (!pendingStockData) return;
 
     // Generate a unique stock ID
-    const maxId = Math.max(0, ...jsonData.boxes.map((b) => b.id || 0));
+    const newId = getNextUniqueId();
     const newStock = {
-      id: maxId + 1,
+      id: newId,
       name: pendingStockData.name,
       type: "stock",
       shape: pendingStockData.shape || "rectangle",
@@ -1203,7 +1211,11 @@ const PaperCanvas = () => {
         connectionData.amount !== undefined ? connectionData.amount : 1;
 
       // Always show both amounts in the label
-      displayText = `${connectionData.name} (${amount})`;
+      if (connectionData.isOverflow) {
+        displayText = `${connectionData.name} (overflow)`;
+      } else {
+        displayText = `${connectionData.name} (${amount})`;
+      }
       nameLabel = new paper.PointText({
         point: labelPosition,
         content: displayText,
@@ -2913,8 +2925,10 @@ const PaperCanvas = () => {
                         type="number"
                         placeholder="Amount to transfer"
                         value={
-                          typeof editingItem?.amount === "string" &&
-                          editingItem.amount.includes("%")
+                          editingItem?.isOverflow
+                            ? 0
+                            : typeof editingItem?.amount === "string" &&
+                              editingItem.amount.includes("%")
                             ? editingItem.amount.replace("%", "")
                             : editingItem?.amount ?? 1
                         }
@@ -3005,9 +3019,9 @@ const PaperCanvas = () => {
                           setEditingItem({
                             ...editingItem,
                             isOverflow: isOverflow,
-                            // If isOverflow is true, reset amount
+                            // If isOverflow is true, set amount to 0
                             amount: isOverflow
-                              ? undefined
+                              ? 0
                               : editingItem?.amount || 1,
                           });
                         }}
@@ -3090,10 +3104,10 @@ const PaperCanvas = () => {
                         const safeEditingItem = {
                           ...editingItem,
                           name: editingItem?.name || "Unnamed Connection",
-                          // If it's an overflow connection, amount should be undefined
+                          // If it's an overflow connection, amount should be 0
                           // Otherwise, ensure amount has a valid value
                           amount: editingItem?.isOverflow
-                            ? undefined
+                            ? 0
                             : editingItem?.amount !== undefined &&
                               editingItem?.amount !== null &&
                               editingItem?.amount !== ""

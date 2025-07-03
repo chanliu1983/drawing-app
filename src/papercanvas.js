@@ -51,7 +51,7 @@ const PaperCanvas = () => {
   // Function to highlight and scroll to selected item in JSON editor
   const highlightSelectedItemInEditor = useCallback(
     (item) => {
-      if (!editorRef.current || !item || !jsonEditorVisible) return;
+      if (!editorRef.current || !item) return;
 
       const editor = editorRef.current;
       const model = editor.getModel();
@@ -63,10 +63,10 @@ const PaperCanvas = () => {
 
       if (item.type === "stock") {
         itemId = item.id;
-        searchPattern = `"id":s*"${itemId}"`;
+        searchPattern = `"id"\\s*:\\s*${itemId}`;
       } else if (item.type === "connection") {
         itemId = item.id;
-        searchPattern = `"id":s*"${itemId}"`;
+        searchPattern = `"id"\\s*:\\s*${itemId}`;
       }
 
       if (!searchPattern) return;
@@ -76,8 +76,6 @@ const PaperCanvas = () => {
       const match = regex.exec(jsonText);
 
       if (match) {
-        const startPos = model.getPositionAt(match.index);
-
         // Find the start and end of the JSON object
         let objectStart = match.index;
         let braceCount = 0;
@@ -111,11 +109,13 @@ const PaperCanvas = () => {
         const startPosition = model.getPositionAt(objectStart);
         const endPosition = model.getPositionAt(objectEnd);
 
-        // Clear previous decorations
-        const oldDecorations = editor.deltaDecorations([], []);
+        // Clear previous decorations if they exist
+        if (editor._selectedItemDecorations) {
+          editor.deltaDecorations(editor._selectedItemDecorations, []);
+        }
 
         // Add highlight decoration
-        const decorations = editor.deltaDecorations(oldDecorations, [
+        const decorations = editor.deltaDecorations([], [
           {
             range: {
               startLineNumber: startPosition.lineNumber,
@@ -142,18 +142,28 @@ const PaperCanvas = () => {
         editor._selectedItemDecorations = decorations;
       }
     },
-    [jsonEditorVisible]
+    []
   );
 
   // Effect to highlight selected item in JSON editor
   useEffect(() => {
-    if (selectedItem && jsonEditorVisible) {
+    if (selectedItem) {
       // Small delay to ensure editor is ready
       setTimeout(() => {
         highlightSelectedItemInEditor(selectedItem);
       }, 100);
     }
-  }, [selectedItem, jsonEditorVisible, highlightSelectedItemInEditor]);
+  }, [selectedItem, highlightSelectedItemInEditor]);
+
+  // Effect to highlight selected item when JSON editor becomes visible
+  useEffect(() => {
+    if (selectedItem && jsonEditorVisible) {
+      // Small delay to ensure editor is ready after becoming visible
+      setTimeout(() => {
+        highlightSelectedItemInEditor(selectedItem);
+      }, 200);
+    }
+  }, [jsonEditorVisible, selectedItem, highlightSelectedItemInEditor]);
 
   const [editingItem, setEditingItem] = useState(null); // For editing form (stock or connection)
   const [selectedBoxId, setSelectedBoxId] = useState(null); // Track selected box

@@ -906,9 +906,10 @@ const PaperCanvas = () => {
         isDragging = true;
         dragStarted = false;
         offset = stockGroup.position.subtract(event.point);
-        // Ensure selection is set on drag start
-        setSelectedItem({ ...stockData, type: "stock" });
-        setEditingItem({ ...stockData, type: "stock" });
+        // Set selection on mouse down for immediate filter response
+        const stockSelection = { ...stockData, type: "stock" };
+        setSelectedItem(stockSelection);
+        setEditingItem(stockSelection);
         setSelectedBoxId(stockData.id);
       };
 
@@ -945,13 +946,18 @@ const PaperCanvas = () => {
 
         if (!dragStarted) {
           // This was a click, not a drag - handle selection
-          setSelectedItem({ ...stockData, type: "stock" });
-          setEditingItem({ ...stockData, type: "stock" });
+          // Stop event propagation to prevent canvas click handler from interfering
+          event.stopPropagation();
+          
+          const stockSelection = { ...stockData, type: "stock" };
+          setSelectedItem(stockSelection);
+          setEditingItem(stockSelection);
           setSelectedBoxId(stockData.id);
         } else {
           // This was a drag - keep selection after drag
-          setSelectedItem({ ...stockData, type: "stock" });
-          setEditingItem({ ...stockData, type: "stock" });
+          const stockSelection = { ...stockData, type: "stock" };
+          setSelectedItem(stockSelection);
+          setEditingItem(stockSelection);
           setSelectedBoxId(stockData.id);
         }
 
@@ -992,6 +998,15 @@ const PaperCanvas = () => {
     drawAxes();
     if (paper.view) paper.view.draw();
   }, [jsonData?.boxes, selectedBoxId, currentMode, editModeFilterEnabled, selectedItem]);
+
+  // Clear selection when switching away from edit mode
+  useEffect(() => {
+    if (currentMode !== "edit") {
+      setSelectedItem(null);
+      setEditingItem(null);
+      setSelectedBoxId(null);
+    }
+  }, [currentMode]);
 
   // Handle connections changes separately to avoid recreating boxes
   useEffect(() => {
@@ -1269,6 +1284,9 @@ const PaperCanvas = () => {
       };
       console.log("Self-connection clicked, current mode:", getCurrentMode());
       if (getCurrentMode() === "edit") {
+        // Stop event propagation to prevent canvas click handler from interfering
+        event.stopPropagation();
+        
         // Use Paper.js hit testing with tolerance for better accuracy
         const hitPoint = event.point || (event.event && event.event.point);
         if (hitPoint) {
@@ -1322,6 +1340,9 @@ const PaperCanvas = () => {
         return modeSelect ? modeSelect.value : "normal";
       };
       if (getCurrentMode() === "edit") {
+        // Stop event propagation to prevent canvas click handler from interfering
+        event.stopPropagation();
+        
         // Get connectionData from the group
         const groupConnectionData =
           event.target.parent?.connectionData || connectionData;
@@ -1533,6 +1554,9 @@ const PaperCanvas = () => {
         return modeSelect ? modeSelect.value : "normal";
       };
       if (getCurrentMode() === "edit") {
+        // Stop event propagation to prevent canvas click handler from interfering
+        event.stopPropagation();
+        
         // Use Paper.js hit testing with tolerance for better accuracy
         const hitPoint = event.point || (event.event && event.event.point);
         if (hitPoint) {
@@ -1575,6 +1599,9 @@ const PaperCanvas = () => {
     // Simplified handler for direct clicks on arrow and labels
     const handleDirectSelect = (event) => {
       if (currentMode === "edit") {
+        // Stop event propagation to prevent canvas click handler from interfering
+        event.stopPropagation();
+        
         // Get connectionData from the group
         const groupConnectionData =
           event.target.parent?.connectionData || connectionData;
@@ -3808,13 +3835,18 @@ const PaperCanvas = () => {
                   const point = new paper.Point(x, y);
                   // Use Paper.js hit testing to check if we clicked on any item
                   const hitResult = paper.project.hitTest(point);
-                  // If no item was hit, or only axes were hit, clear selection
+                  // Only clear selection if we clicked on truly empty space or axes
+                  // Give a small delay to avoid interfering with item selection events
                   if (
                     !hitResult ||
                     (hitResult.item && hitResult.item.name === "axis")
                   ) {
-                    setSelectedItem(null);
-                    setEditingItem(null);
+                    // Use setTimeout to avoid race conditions with item selection
+                    setTimeout(() => {
+                      setSelectedItem(null);
+                      setEditingItem(null);
+                      setSelectedBoxId(null);
+                    }, 10);
                   }
                 }
               }}

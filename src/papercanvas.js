@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import paper from 'paper';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import Editor from '@monaco-editor/react';
+import { useState, useEffect, useRef, useCallback } from "react";
+import paper from "paper";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import Editor from "@monaco-editor/react";
 // Removed initialData import - now loading from database
-import dbService from './dbService';
+import dbService from "./dbService";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,8 +13,8 @@ import {
   Title,
   Tooltip,
   Legend,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 
 // Register Chart.js components
 ChartJS.register(
@@ -27,117 +27,123 @@ ChartJS.register(
   Legend
 );
 
-
 const PaperCanvas = () => {
   const canvasRef = useRef(null);
   const resizeCanvasRef = useRef(null);
   const [boxes, setBoxes] = useState([]);
   const [connections, setConnections] = useState([]);
   const [jsonData, setJsonData] = useState({ boxes: [], connections: [] });
-  const [editorValue, setEditorValue] = useState(JSON.stringify({ boxes: [], connections: [] }, null, 2));
-  
+  const [editorValue, setEditorValue] = useState(
+    JSON.stringify({ boxes: [], connections: [] }, null, 2)
+  );
+
   // Toolbox state
   const [toolboxCollapsed, setToolboxCollapsed] = useState(false);
   const [toolboxPosition, setToolboxPosition] = useState({ x: 10, y: 10 });
   // Removed selectedMode - using only currentMode for simplicity
-  const [newStockName, setNewStockName] = useState('');
+  const [newStockName, setNewStockName] = useState("");
   const [newStockAmount, setNewStockAmount] = useState(0);
-  const [newStockShape, setNewStockShape] = useState('rectangle'); // 'rectangle' or 'circle'
+  const [newStockShape, setNewStockShape] = useState("rectangle"); // 'rectangle' or 'circle'
   const [selectedItem, setSelectedItem] = useState(null); // Unified selection for stock or connection
   const editorRef = useRef(null);
   const [jsonEditorVisible, setJsonEditorVisible] = useState(true); // Control JSON editor visibility
 
   // Function to highlight and scroll to selected item in JSON editor
-  const highlightSelectedItemInEditor = useCallback((item) => {
-    if (!editorRef.current || !item || !jsonEditorVisible) return;
+  const highlightSelectedItemInEditor = useCallback(
+    (item) => {
+      if (!editorRef.current || !item || !jsonEditorVisible) return;
 
-    const editor = editorRef.current;
-    const model = editor.getModel();
-    if (!model) return;
+      const editor = editorRef.current;
+      const model = editor.getModel();
+      if (!model) return;
 
-    const jsonText = model.getValue();
-    let searchPattern = '';
-    let itemId = '';
+      const jsonText = model.getValue();
+      let searchPattern = "";
+      let itemId = "";
 
-    if (item.type === 'stock') {
-      itemId = item.id;
-      searchPattern = `"id":\s*"${itemId}"`;
-    } else if (item.type === 'connection') {
-      itemId = item.id;
-      searchPattern = `"id":\s*"${itemId}"`;
-    }
-
-    if (!searchPattern) return;
-
-    // Find the pattern in the JSON text
-    const regex = new RegExp(searchPattern, 'g');
-    const match = regex.exec(jsonText);
-    
-    if (match) {
-      const startPos = model.getPositionAt(match.index);
-      
-      // Find the start and end of the JSON object
-      let objectStart = match.index;
-      let braceCount = 0;
-      let objectEnd = match.index;
-      
-      // Find the start of the object (look backwards for opening brace)
-      for (let i = match.index; i >= 0; i--) {
-        if (jsonText[i] === '}') braceCount++;
-        if (jsonText[i] === '{') {
-          if (braceCount === 0) {
-            objectStart = i;
-            break;
-          }
-          braceCount--;
-        }
+      if (item.type === "stock") {
+        itemId = item.id;
+        searchPattern = `"id":s*"${itemId}"`;
+      } else if (item.type === "connection") {
+        itemId = item.id;
+        searchPattern = `"id":s*"${itemId}"`;
       }
-      
-      // Find the end of the object (look forwards for closing brace)
-      braceCount = 0;
-      for (let i = objectStart; i < jsonText.length; i++) {
-        if (jsonText[i] === '{') braceCount++;
-        if (jsonText[i] === '}') {
-          braceCount--;
-          if (braceCount === 0) {
-            objectEnd = i + 1;
-            break;
+
+      if (!searchPattern) return;
+
+      // Find the pattern in the JSON text
+      const regex = new RegExp(searchPattern, "g");
+      const match = regex.exec(jsonText);
+
+      if (match) {
+        const startPos = model.getPositionAt(match.index);
+
+        // Find the start and end of the JSON object
+        let objectStart = match.index;
+        let braceCount = 0;
+        let objectEnd = match.index;
+
+        // Find the start of the object (look backwards for opening brace)
+        for (let i = match.index; i >= 0; i--) {
+          if (jsonText[i] === "}") braceCount++;
+          if (jsonText[i] === "{") {
+            if (braceCount === 0) {
+              objectStart = i;
+              break;
+            }
+            braceCount--;
           }
         }
-      }
-      
-      const startPosition = model.getPositionAt(objectStart);
-      const endPosition = model.getPositionAt(objectEnd);
-      
-      // Clear previous decorations
-      const oldDecorations = editor.deltaDecorations([], []);
-      
-      // Add highlight decoration
-      const decorations = editor.deltaDecorations(oldDecorations, [{
-        range: {
+
+        // Find the end of the object (look forwards for closing brace)
+        braceCount = 0;
+        for (let i = objectStart; i < jsonText.length; i++) {
+          if (jsonText[i] === "{") braceCount++;
+          if (jsonText[i] === "}") {
+            braceCount--;
+            if (braceCount === 0) {
+              objectEnd = i + 1;
+              break;
+            }
+          }
+        }
+
+        const startPosition = model.getPositionAt(objectStart);
+        const endPosition = model.getPositionAt(objectEnd);
+
+        // Clear previous decorations
+        const oldDecorations = editor.deltaDecorations([], []);
+
+        // Add highlight decoration
+        const decorations = editor.deltaDecorations(oldDecorations, [
+          {
+            range: {
+              startLineNumber: startPosition.lineNumber,
+              startColumn: startPosition.column,
+              endLineNumber: endPosition.lineNumber,
+              endColumn: endPosition.column,
+            },
+            options: {
+              className: "selected-json-highlight",
+              isWholeLine: false,
+            },
+          },
+        ]);
+
+        // Scroll to the highlighted section
+        editor.revealRangeInCenter({
           startLineNumber: startPosition.lineNumber,
           startColumn: startPosition.column,
           endLineNumber: endPosition.lineNumber,
-          endColumn: endPosition.column
-        },
-        options: {
-          className: 'selected-json-highlight',
-          isWholeLine: false
-        }
-      }]);
-      
-      // Scroll to the highlighted section
-      editor.revealRangeInCenter({
-        startLineNumber: startPosition.lineNumber,
-        startColumn: startPosition.column,
-        endLineNumber: endPosition.lineNumber,
-        endColumn: endPosition.column
-      });
-      
-      // Store decorations for cleanup
-      editor._selectedItemDecorations = decorations;
-    }
-  }, [jsonEditorVisible]);
+          endColumn: endPosition.column,
+        });
+
+        // Store decorations for cleanup
+        editor._selectedItemDecorations = decorations;
+      }
+    },
+    [jsonEditorVisible]
+  );
 
   // Effect to highlight selected item in JSON editor
   useEffect(() => {
@@ -149,23 +155,23 @@ const PaperCanvas = () => {
     }
   }, [selectedItem, jsonEditorVisible, highlightSelectedItemInEditor]);
 
-   const [editingItem, setEditingItem] = useState(null); // For editing form (stock or connection)
+  const [editingItem, setEditingItem] = useState(null); // For editing form (stock or connection)
   const [selectedBoxId, setSelectedBoxId] = useState(null); // Track selected box
   // Removed editMode - now context-sensitive based on selection
-  const [splitSize, setSplitSize] = useState('70%'); // Control split pane size
-  
+  const [splitSize, setSplitSize] = useState("70%"); // Control split pane size
+
   // Canvas management state
   const [availableCanvases, setAvailableCanvases] = useState([]);
-  const [currentCanvasName, setCurrentCanvasName] = useState('default');
+  const [currentCanvasName, setCurrentCanvasName] = useState("default");
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
-  const [newCanvasName, setNewCanvasName] = useState('');
-  
+  const [newCanvasName, setNewCanvasName] = useState("");
+
   // Simulation state
   const [simulationSteps, setSimulationSteps] = useState(0);
   const [targetSteps, setTargetSteps] = useState(1);
   const [simulationHistory, setSimulationHistory] = useState([]); // Track stock amounts over time
   const [showPlotPanel, setShowPlotPanel] = useState(false);
-  const [selectedStockForPlot, setSelectedStockForPlot] = useState('');
+  const [selectedStockForPlot, setSelectedStockForPlot] = useState("");
 
   const paperState = useRef({
     boxes: [],
@@ -179,41 +185,49 @@ const PaperCanvas = () => {
   // Draw axes function moved outside useEffect for reuse
   const drawAxes = () => {
     // Remove old axes if they exist to prevent duplicates on resize
-    paper.project.getItems({ name: 'axis' }).forEach(item => item.remove());
+    paper.project.getItems({ name: "axis" }).forEach((item) => item.remove());
 
     if (!paper.view) return;
-    
+
     const origin = new paper.Point(50, paper.view.size.height - 50);
     const viewSize = paper.view.size;
 
     // X-axis
-    const xAxis = new paper.Path.Line(new paper.Point(0, origin.y), new paper.Point(viewSize.width, origin.y));
-    xAxis.strokeColor = 'grey';
-    xAxis.name = 'axis';
+    const xAxis = new paper.Path.Line(
+      new paper.Point(0, origin.y),
+      new paper.Point(viewSize.width, origin.y)
+    );
+    xAxis.strokeColor = "grey";
+    xAxis.name = "axis";
 
     // Y-axis
-    const yAxis = new paper.Path.Line(new paper.Point(origin.x, 0), new paper.Point(origin.x, viewSize.height));
-    yAxis.strokeColor = 'grey';
-    yAxis.name = 'axis';
+    const yAxis = new paper.Path.Line(
+      new paper.Point(origin.x, 0),
+      new paper.Point(origin.x, viewSize.height)
+    );
+    yAxis.strokeColor = "grey";
+    yAxis.name = "axis";
 
     // Origin text
     const originText = new paper.PointText(origin.add(5, -10));
     originText.content = `(0,0)`;
-    originText.fillColor = 'black';
+    originText.fillColor = "black";
     originText.fontSize = 12;
-    originText.name = 'axis';
+    originText.name = "axis";
 
     // X-axis label
-    const xLabel = new paper.PointText(new paper.Point(viewSize.width - 20, origin.y - 10));
-    xLabel.content = 'x';
-    xLabel.fillColor = 'grey';
-    xLabel.name = 'axis';
+    const xLabel = new paper.PointText(
+      new paper.Point(viewSize.width - 20, origin.y - 10)
+    );
+    xLabel.content = "x";
+    xLabel.fillColor = "grey";
+    xLabel.name = "axis";
 
     // Y-axis label
     const yLabel = new paper.PointText(new paper.Point(origin.x + 10, 20));
-    yLabel.content = 'y';
-    yLabel.fillColor = 'grey';
-    yLabel.name = 'axis';
+    yLabel.content = "y";
+    yLabel.fillColor = "grey";
+    yLabel.name = "axis";
   };
 
   // Connection tool functions
@@ -225,7 +239,7 @@ const PaperCanvas = () => {
       // Complete the connection
       createNewConnection(connectionStart, stockId);
       // Switch back to normal mode after creating connection
-      setCurrentMode('normal');
+      setCurrentMode("normal");
       // Reset connection state
       setConnectionStart(null);
       if (tempConnectionLine) {
@@ -236,45 +250,56 @@ const PaperCanvas = () => {
   };
 
   const createNewConnection = (fromStockId, toStockId) => {
-    const maxId = Math.max(0, ...jsonData.connections.map(c => c.id || 0));
-    const fromStockData = jsonData.boxes.find(box => box.id === fromStockId);
-    const toStockData = jsonData.boxes.find(box => box.id === toStockId);
-    const connectionName = fromStockData && toStockData ? `${fromStockData.name} -> ${toStockData.name}` : `Connection ${maxId + 1}`;
+    const maxId = Math.max(0, ...jsonData.connections.map((c) => c.id || 0));
+    const fromStockData = jsonData.boxes.find((box) => box.id === fromStockId);
+    const toStockData = jsonData.boxes.find((box) => box.id === toStockId);
+    const connectionName =
+      fromStockData && toStockData
+        ? `${fromStockData.name} -> ${toStockData.name}`
+        : `Connection ${maxId + 1}`;
 
     // Default values for amount
     // Using numbers by default for new connections
     const amount = 1;
-    
+
     const newConnection = {
       id: maxId + 1,
       name: connectionName,
       type: "feedback_loop",
       fromStockId: fromStockId,
       toStockId: toStockId,
-      amount: amount // Amount transferred from source to destination
+      amount: amount, // Amount transferred from source to destination
     };
     // Find the stock groups for visual connection
-    const fromStockGroup = paperState.current.boxes.find(box => box.stockId === fromStockId);
-    const toStockGroup = paperState.current.boxes.find(box => box.stockId === toStockId);
+    const fromStockGroup = paperState.current.boxes.find(
+      (box) => box.stockId === fromStockId
+    );
+    const toStockGroup = paperState.current.boxes.find(
+      (box) => box.stockId === toStockId
+    );
     if (fromStockGroup && toStockGroup) {
       // Create visual connection immediately
-      const visualConnection = createConnection(fromStockGroup, toStockGroup, newConnection);
+      const visualConnection = createConnection(
+        fromStockGroup,
+        toStockGroup,
+        newConnection
+      );
       paperState.current.connections.push(visualConnection);
-      setConnections(prev => [...prev, visualConnection]);
+      setConnections((prev) => [...prev, visualConnection]);
       if (paper.view) paper.view.draw();
     }
     // Update jsonData without triggering box recreation
-    setJsonData(prev => ({
+    setJsonData((prev) => ({
       ...prev,
-      connections: [...prev.connections, newConnection]
+      connections: [...prev.connections, newConnection],
     }));
-    
+
     // Force a re-render to update the JSON editor
     if (paper.view) paper.view.draw();
   };
 
   const cancelConnectionTool = () => {
-    setCurrentMode('normal');
+    setCurrentMode("normal");
     setConnectionStart(null);
     if (tempConnectionLine) {
       tempConnectionLine.remove();
@@ -288,21 +313,21 @@ const PaperCanvas = () => {
       const canvasNames = await dbService.getAllCanvasNames();
       setAvailableCanvases(canvasNames);
     } catch (error) {
-      console.error('Failed to load available canvases:', error);
+      console.error("Failed to load available canvases:", error);
     }
   };
 
   const saveCurrentCanvas = async (name = currentCanvasName) => {
-    console.log('Save button clicked! Current canvas name:', name);
-    console.log('Current jsonData:', jsonData);
+    console.log("Save button clicked! Current canvas name:", name);
+    console.log("Current jsonData:", jsonData);
     try {
       await dbService.saveCanvas(name, jsonData);
 
       if (!availableCanvases.includes(name)) {
-        setAvailableCanvases(prev => [...prev, name].sort());
+        setAvailableCanvases((prev) => [...prev, name].sort());
       }
     } catch (error) {
-      console.error('Failed to save canvas:', error);
+      console.error("Failed to save canvas:", error);
     }
   };
 
@@ -311,24 +336,30 @@ const PaperCanvas = () => {
     if (data && data.boxes) {
       return {
         ...data,
-        boxes: data.boxes.map(box => {
+        boxes: data.boxes.map((box) => {
           // Ensure amount is a valid number
-          const validAmount = typeof box.amount === 'number' && !isNaN(box.amount) ? box.amount : 0;
+          const validAmount =
+            typeof box.amount === "number" && !isNaN(box.amount)
+              ? box.amount
+              : 0;
           // Ensure simulationAmount is a valid number
           let validSimulationAmount;
           if (box.simulationAmount !== undefined) {
-            const parsed = typeof box.simulationAmount === 'number' ? box.simulationAmount : parseFloat(box.simulationAmount);
+            const parsed =
+              typeof box.simulationAmount === "number"
+                ? box.simulationAmount
+                : parseFloat(box.simulationAmount);
             validSimulationAmount = !isNaN(parsed) ? parsed : validAmount;
           } else {
             validSimulationAmount = validAmount;
           }
-          
+
           return {
             ...box,
             amount: validAmount,
-            simulationAmount: validSimulationAmount
+            simulationAmount: validSimulationAmount,
           };
-        })
+        }),
       };
     }
     return data;
@@ -342,49 +373,46 @@ const PaperCanvas = () => {
         setJsonData(dataWithSimulation);
         setEditorValue(JSON.stringify(dataWithSimulation, null, 2));
         setCurrentCanvasName(name);
-
       } else {
-
       }
     } catch (error) {
-      console.error('Failed to load canvas:', error);
-      alert('Failed to load canvas. Please try again.');
+      console.error("Failed to load canvas:", error);
+      alert("Failed to load canvas. Please try again.");
     }
   };
 
   const createNewCanvas = async (name) => {
     if (!name.trim()) {
-      alert('Please enter a canvas name');
+      alert("Please enter a canvas name");
       return;
     }
-    
+
     if (await dbService.canvasExists(name)) {
-      alert('A canvas with this name already exists');
+      alert("A canvas with this name already exists");
       return;
     }
 
     const newCanvasData = {
       boxes: [],
-      connections: []
+      connections: [],
     };
-    
+
     try {
       await dbService.saveCanvas(name, newCanvasData);
       setJsonData(newCanvasData);
       setEditorValue(JSON.stringify(newCanvasData, null, 2));
       setCurrentCanvasName(name);
-      setAvailableCanvases(prev => [...prev, name].sort());
+      setAvailableCanvases((prev) => [...prev, name].sort());
       setShowNewCanvasDialog(false);
-      setNewCanvasName('');
-
+      setNewCanvasName("");
     } catch (error) {
-      console.error('Failed to create new canvas:', error);
-      alert('Failed to create new canvas. Please try again.');
+      console.error("Failed to create new canvas:", error);
+      alert("Failed to create new canvas. Please try again.");
     }
   };
 
   const handleCanvasSelection = (selectedValue) => {
-    if (selectedValue === 'new_canvas') {
+    if (selectedValue === "new_canvas") {
       setShowNewCanvasDialog(true);
     } else {
       loadCanvas(selectedValue);
@@ -400,121 +428,129 @@ const PaperCanvas = () => {
       try {
         await dbService.init();
         await loadAvailableCanvases();
-        
+
         // Save the default canvas if it doesn't exist
-        if (!(await dbService.canvasExists('default'))) {
+        if (!(await dbService.canvasExists("default"))) {
           const defaultData = { boxes: [], connections: [] };
-          await dbService.saveCanvas('default', defaultData);
-          setAvailableCanvases(prev => ['default', ...prev].sort());
+          await dbService.saveCanvas("default", defaultData);
+          setAvailableCanvases((prev) => ["default", ...prev].sort());
         }
       } catch (error) {
-        console.error('Failed to initialize database:', error);
+        console.error("Failed to initialize database:", error);
       }
     };
-    
+
     initializeDatabase();
   }, []);
 
   useEffect(() => {
     if (!canvasRef.current) {
-      console.error('Canvas ref is null');
+      console.error("Canvas ref is null");
       return;
     }
-    
+
     // Only do the full setup if Paper.js hasn't been initialized yet
     // This prevents clearing the canvas when toggling the JSON editor
     if (!paperInitialized.current) {
-      console.log('Initializing Paper.js for the first time');
+      console.log("Initializing Paper.js for the first time");
       paper.setup(canvasRef.current);
       paperInitialized.current = true;
-      
+
       // Add canvas dragging functionality in normal mode
       const tool = new paper.Tool();
       let lastPoint = null;
-      
+
       tool.onMouseDown = (event) => {
         // Get current mode
         const getCurrentMode = () => {
-          const modeSelect = document.querySelector('#mode-select');
-          return modeSelect ? modeSelect.value : 'normal';
+          const modeSelect = document.querySelector("#mode-select");
+          return modeSelect ? modeSelect.value : "normal";
         };
-        
+
         // Only enable canvas dragging in normal mode
-        if (getCurrentMode() === 'normal') {
+        if (getCurrentMode() === "normal") {
           // Check if we're clicking on empty space (not on any item)
           const hitResult = paper.project.hitTest(event.point);
-          if (!hitResult || (hitResult.item && hitResult.item.name === 'axis')) {
+          if (
+            !hitResult ||
+            (hitResult.item && hitResult.item.name === "axis")
+          ) {
             lastPoint = event.point.clone();
           }
         }
       };
-      
+
       tool.onMouseDrag = (event) => {
         // Get current mode
         const getCurrentMode = () => {
-          const modeSelect = document.querySelector('#mode-select');
-          return modeSelect ? modeSelect.value : 'normal';
+          const modeSelect = document.querySelector("#mode-select");
+          return modeSelect ? modeSelect.value : "normal";
         };
-        
+
         // Only enable canvas dragging in normal mode
-        if (getCurrentMode() === 'normal' && lastPoint) {
+        if (getCurrentMode() === "normal" && lastPoint) {
           // Calculate the delta movement
           const delta = event.point.subtract(lastPoint);
-          
+
           // Move all items in the project
-          paper.project.getItems().forEach(item => {
+          paper.project.getItems().forEach((item) => {
             item.position = item.position.add(delta);
           });
-          
+
           // Update lastPoint for the next drag event
           lastPoint = event.point.clone();
-          
+
           // Update the JSON data to reflect the new positions
-          setJsonData(prev => {
-            const newBoxes = prev.boxes.map(box => {
-              const paperBox = paperState.current.boxes.find(pb => pb.stockId === box.id);
+          setJsonData((prev) => {
+            const newBoxes = prev.boxes.map((box) => {
+              const paperBox = paperState.current.boxes.find(
+                (pb) => pb.stockId === box.id
+              );
               if (paperBox) {
                 return {
                   ...box,
                   position: {
                     x: Math.round(paperBox.position.x),
-                    y: Math.round(paperBox.position.y)
-                  }
+                    y: Math.round(paperBox.position.y),
+                  },
                 };
               }
               return box;
             });
             return { ...prev, boxes: newBoxes };
           });
-          
+
           // Redraw the view
           paper.view.draw();
         }
       };
-      
+
       tool.onMouseUp = () => {
         lastPoint = null;
       };
     } else {
-
       // If Paper.js is already initialized, just update the view
     }
 
     const updateConnectionsForResize = () => {
       if (!jsonData || !jsonData.connections) return;
-      
+
       paperState.current.connections.forEach((connection, index) => {
         const connData = jsonData.connections[index];
         if (!connData) return;
-        
-        const fromStock = paperState.current.boxes.find(box => box.stockId === connData.fromStockId);
-        const toStock = paperState.current.boxes.find(box => box.stockId === connData.toStockId);
-        
+
+        const fromStock = paperState.current.boxes.find(
+          (box) => box.stockId === connData.fromStockId
+        );
+        const toStock = paperState.current.boxes.find(
+          (box) => box.stockId === connData.toStockId
+        );
+
         if (!fromStock || !toStock) return;
-        
+
         const end = getEdgePoint(fromStock, toStock);
         const start = getEdgePoint(toStock, fromStock);
-        
+
         // Calculate direction and apply direction-based handle logic
         const arrowSize = 8;
         const rawDirection = end.subtract(start);
@@ -525,7 +561,7 @@ const PaperCanvas = () => {
           direction = new paper.Point(0, rawDirection.y > 0 ? 1 : -1);
         }
         const arrowBase = end.subtract(direction.multiply(arrowSize));
-        
+
         // Handle calculations should follow the arrow direction
         let handle1, handle2;
         if (Math.abs(direction.x) > 0) {
@@ -546,14 +582,18 @@ const PaperCanvas = () => {
           path.segments[0].handleOut = handle1.subtract(start);
           path.segments[1].handleIn = handle2.subtract(arrowBase);
         }
-        
+
         // Update arrow head (second child) with proper direction-based calculations
         const arrowHead = connection.children[1];
         if (arrowHead && arrowHead.segments) {
           const perpendicular = new paper.Point(-direction.y, direction.x);
-          const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
-          const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
-          arrowHead.segments[0].point = end;  // arrowTip
+          const arrowLeft = arrowBase.add(
+            perpendicular.multiply(arrowSize / 2)
+          );
+          const arrowRight = arrowBase.subtract(
+            perpendicular.multiply(arrowSize / 2)
+          );
+          arrowHead.segments[0].point = end; // arrowTip
           arrowHead.segments[1].point = arrowLeft;
           arrowHead.segments[2].point = arrowRight;
         }
@@ -574,20 +614,22 @@ const PaperCanvas = () => {
         const deltaY = newHeight - oldHeight;
         if (deltaY !== 0) {
           // Update Paper.js objects only - avoid triggering useEffect re-render
-          paperState.current.boxes.forEach(box => {
+          paperState.current.boxes.forEach((box) => {
             box.position.y += deltaY;
           });
           // Also update jsonData.boxes positions to match Paper.js box positions
-          setJsonData(prev => {
-            const newBoxes = prev.boxes.map(box => {
-              const paperBox = paperState.current.boxes.find(pb => pb.stockId === box.id);
+          setJsonData((prev) => {
+            const newBoxes = prev.boxes.map((box) => {
+              const paperBox = paperState.current.boxes.find(
+                (pb) => pb.stockId === box.id
+              );
               if (paperBox) {
                 return {
                   ...box,
                   position: {
                     x: Math.round(paperBox.position.x),
-                    y: Math.round(paperBox.position.y)
-                  }
+                    y: Math.round(paperBox.position.y),
+                  },
                 };
               }
               return box;
@@ -604,25 +646,25 @@ const PaperCanvas = () => {
       // Update canvas dimensions
       canvasRef.current.width = newWidth;
       canvasRef.current.height = newHeight;
-      
+
       // Update Paper.js view size without scaling content
       if (paper.view) {
         paper.view.setViewSize(new paper.Size(newWidth, newHeight));
       }
-      
+
       // Ensure pixel ratio is maintained
       const pixelRatio = window.devicePixelRatio || 1;
-      canvasRef.current.style.width = newWidth + 'px';
-      canvasRef.current.style.height = newHeight + 'px';
+      canvasRef.current.style.width = newWidth + "px";
+      canvasRef.current.style.height = newHeight + "px";
       canvasRef.current.width = newWidth * pixelRatio;
       canvasRef.current.height = newHeight * pixelRatio;
       if (paper.view) {
         paper.view.setViewSize(new paper.Size(newWidth, newHeight));
       }
-      
-      const ctx = canvasRef.current.getContext('2d');
+
+      const ctx = canvasRef.current.getContext("2d");
       ctx.scale(pixelRatio, pixelRatio);
-      
+
       updateConnectionsForResize();
       drawAxes();
       if (paper.view) paper.view.draw();
@@ -650,11 +692,11 @@ const PaperCanvas = () => {
       drawAxes();
       if (paper.view) paper.view.draw();
     }, 0);
-    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener("resize", resizeCanvas);
 
     return () => {
       paper.project.clear();
-      window.removeEventListener('resize', resizeCanvas);
+      window.removeEventListener("resize", resizeCanvas);
       if (observer && canvasRef.current && canvasRef.current.parentElement) {
         observer.unobserve(canvasRef.current.parentElement);
       }
@@ -666,8 +708,8 @@ const PaperCanvas = () => {
     if (!jsonData || !jsonData.boxes) return;
 
     // Clear existing items except axes
-    paper.project.getItems().forEach(item => {
-      if (item.name !== 'axis') {
+    paper.project.getItems().forEach((item) => {
+      if (item.name !== "axis") {
         item.remove();
       }
     });
@@ -679,12 +721,16 @@ const PaperCanvas = () => {
     jsonData.boxes.forEach((stockData, index) => {
       const boxWidth = 80;
       const boxHeight = 50; // Increased height to accommodate name and amount
-      const x = stockData.position?.x || Math.random() * ((paper.view?.size?.width || 800) - boxWidth);
-      const y = stockData.position?.y || Math.random() * ((paper.view?.size?.height || 600) - boxHeight);
+      const x =
+        stockData.position?.x ||
+        Math.random() * ((paper.view?.size?.width || 800) - boxWidth);
+      const y =
+        stockData.position?.y ||
+        Math.random() * ((paper.view?.size?.height || 600) - boxHeight);
 
       const isSelected = selectedBoxId === stockData.id;
-      const isCircle = stockData.shape === 'circle';
-      
+      const isCircle = stockData.shape === "circle";
+
       let stockBox;
       if (isCircle) {
         // Create circle for infinite stocks
@@ -692,51 +738,56 @@ const PaperCanvas = () => {
         stockBox = new paper.Path.Circle({
           center: [x, y],
           radius: radius,
-          fillColor: isSelected ? '#ffe082' : 'lightgreen', // Different color for infinite stocks
-          strokeColor: isSelected ? '#ff9800' : 'green',
-          strokeWidth: isSelected ? 3 : 2
+          fillColor: isSelected ? "#ffe082" : "lightgreen", // Different color for infinite stocks
+          strokeColor: isSelected ? "#ff9800" : "green",
+          strokeWidth: isSelected ? 3 : 2,
         });
       } else {
         // Create rectangle for finite stocks
         stockBox = new paper.Path.Rectangle({
-          point: [x - boxWidth/2, y - boxHeight/2],
+          point: [x - boxWidth / 2, y - boxHeight / 2],
           size: [boxWidth, boxHeight],
-          fillColor: isSelected ? '#ffe082' : 'lightblue',
-          strokeColor: isSelected ? '#ff9800' : 'blue',
-          strokeWidth: isSelected ? 3 : 2
+          fillColor: isSelected ? "#ffe082" : "lightblue",
+          strokeColor: isSelected ? "#ff9800" : "blue",
+          strokeWidth: isSelected ? 3 : 2,
         });
       }
 
       const stockName = stockData.name || `Stock ${index + 1}`;
       let displayText;
-      let textColor = 'black';
-      let fontWeight = 'normal';
+      let textColor = "black";
+      let fontWeight = "normal";
 
       // Handle infinite stocks
-      if (stockData.shape === 'circle') {
+      if (stockData.shape === "circle") {
         displayText = `${stockName}\n∞`;
       }
       // Handle stocks with simulation amounts
       else if (stockData.simulationAmount !== undefined) {
         let simAmount;
-        if (typeof stockData.simulationAmount === 'number' && !isNaN(stockData.simulationAmount)) {
+        if (
+          typeof stockData.simulationAmount === "number" &&
+          !isNaN(stockData.simulationAmount)
+        ) {
           simAmount = stockData.simulationAmount.toFixed(3);
         } else {
           const parsed = parseFloat(stockData.simulationAmount);
-          simAmount = !isNaN(parsed) ? parsed.toFixed(3) : '0.000';
+          simAmount = !isNaN(parsed) ? parsed.toFixed(3) : "0.000";
         }
-        const capacityText = stockData.capacity > 0 ? ` / ${stockData.capacity}` : '';
+        const capacityText =
+          stockData.capacity > 0 ? ` / ${stockData.capacity}` : "";
         displayText = `${stockName}\n${simAmount} / ${stockData.amount}${capacityText}`;
-        
+
         // Highlight changed amounts
         if (stockData.simulationAmount !== stockData.amount) {
-          textColor = '#FF6600';
-          fontWeight = 'bold';
+          textColor = "#FF6600";
+          fontWeight = "bold";
         }
       }
       // Regular stocks
       else {
-        const capacityText = stockData.capacity > 0 ? ` / ${stockData.capacity}` : '';
+        const capacityText =
+          stockData.capacity > 0 ? ` / ${stockData.capacity}` : "";
         displayText = `${stockName}\n${stockData.amount}${capacityText}`;
       }
 
@@ -747,7 +798,7 @@ const PaperCanvas = () => {
         fillColor: textColor,
         fontSize: 10,
         fontWeight: fontWeight,
-        justification: 'center'
+        justification: "center",
       });
 
       const stockGroup = new paper.Group([stockBox, textLabel]);
@@ -763,11 +814,11 @@ const PaperCanvas = () => {
 
       stockGroup.onMouseDown = (event) => {
         // Use a function to get current mode to avoid closure issues
-    const getCurrentMode = () => {
-      const modeSelect = document.querySelector('#mode-select');
-      return modeSelect ? modeSelect.value : 'normal';
-    };
-        if (getCurrentMode() === 'connect') {
+        const getCurrentMode = () => {
+          const modeSelect = document.querySelector("#mode-select");
+          return modeSelect ? modeSelect.value : "normal";
+        };
+        if (getCurrentMode() === "connect") {
           // Disable dragging in connect mode
           return;
         }
@@ -775,25 +826,25 @@ const PaperCanvas = () => {
         dragStarted = false;
         offset = stockGroup.position.subtract(event.point);
         // Ensure selection is set on drag start
-        setSelectedItem({ ...stockData, type: 'stock' });
-        setEditingItem({ ...stockData, type: 'stock' });
+        setSelectedItem({ ...stockData, type: "stock" });
+        setEditingItem({ ...stockData, type: "stock" });
         setSelectedBoxId(stockData.id);
       };
 
       stockGroup.onMouseDrag = (event) => {
         // Use a function to get current mode to avoid closure issues
         const getCurrentMode = () => {
-          const modeSelect = document.querySelector('#mode-select');
-          return modeSelect ? modeSelect.value : 'normal';
+          const modeSelect = document.querySelector("#mode-select");
+          return modeSelect ? modeSelect.value : "normal";
         };
-        if (getCurrentMode() === 'connect') {
+        if (getCurrentMode() === "connect") {
           // Disable dragging in connect mode
           return;
         }
         if (isDragging) {
           dragStarted = true;
           stockGroup.position = event.point.add(offset);
-          const boxIndex = newBoxes.findIndex(b => b === stockGroup);
+          const boxIndex = newBoxes.findIndex((b) => b === stockGroup);
           updateConnectionsOnDrag(stockGroup, boxIndex);
         }
       };
@@ -801,28 +852,28 @@ const PaperCanvas = () => {
       stockGroup.onMouseUp = (event) => {
         // Use a function to get current mode to avoid closure issues
         const getCurrentMode = () => {
-          const modeSelect = document.querySelector('#mode-select');
-          return modeSelect ? modeSelect.value : 'normal';
+          const modeSelect = document.querySelector("#mode-select");
+          return modeSelect ? modeSelect.value : "normal";
         };
-        if (getCurrentMode() === 'connect') {
+        if (getCurrentMode() === "connect") {
           // Connection logic is now handled by canvas hit testing
           return;
         }
-        
+
         isDragging = false;
-        
+
         if (!dragStarted) {
           // This was a click, not a drag - handle selection
-          setSelectedItem({ ...stockData, type: 'stock' });
-          setEditingItem({ ...stockData, type: 'stock' });
+          setSelectedItem({ ...stockData, type: "stock" });
+          setEditingItem({ ...stockData, type: "stock" });
           setSelectedBoxId(stockData.id);
         } else {
           // This was a drag - keep selection after drag
-          setSelectedItem({ ...stockData, type: 'stock' });
-        setEditingItem({ ...stockData, type: 'stock' });
-        setSelectedBoxId(stockData.id);
+          setSelectedItem({ ...stockData, type: "stock" });
+          setEditingItem({ ...stockData, type: "stock" });
+          setSelectedBoxId(stockData.id);
         }
-        
+
         dragStarted = false;
       };
 
@@ -832,8 +883,12 @@ const PaperCanvas = () => {
     // Create feedback loops from JSON data
     if (jsonData.connections) {
       jsonData.connections.forEach((connData) => {
-        const fromStock = newBoxes.find(box => box.stockId === connData.fromStockId);
-        const toStock = newBoxes.find(box => box.stockId === connData.toStockId);
+        const fromStock = newBoxes.find(
+          (box) => box.stockId === connData.fromStockId
+        );
+        const toStock = newBoxes.find(
+          (box) => box.stockId === connData.toStockId
+        );
         if (fromStock && toStock) {
           const connection = createConnection(fromStock, toStock, connData);
           newConnections.push(connection);
@@ -855,27 +910,31 @@ const PaperCanvas = () => {
   // Handle connections changes separately to avoid recreating boxes
   useEffect(() => {
     if (!jsonData || !jsonData.connections || !paperState.current.boxes) return;
-    
+
     // Remove existing connections
-    paperState.current.connections.forEach(conn => {
+    paperState.current.connections.forEach((conn) => {
       if (conn && conn.remove) {
         conn.remove();
       }
     });
     paperState.current.connections = [];
-    
+
     // Recreate connections
     const newConnections = [];
     jsonData.connections.forEach((connData) => {
-      const fromStock = paperState.current.boxes.find(box => box.stockId === connData.fromStockId);
-      const toStock = paperState.current.boxes.find(box => box.stockId === connData.toStockId);
+      const fromStock = paperState.current.boxes.find(
+        (box) => box.stockId === connData.fromStockId
+      );
+      const toStock = paperState.current.boxes.find(
+        (box) => box.stockId === connData.toStockId
+      );
       if (fromStock && toStock) {
         // Always use fromStock as the first argument, toStock as the second
         const connection = createConnection(fromStock, toStock, connData);
         newConnections.push(connection);
       }
     });
-    
+
     paperState.current.connections = newConnections;
     setConnections(newConnections);
     if (paper.view) paper.view.draw();
@@ -886,7 +945,7 @@ const PaperCanvas = () => {
     console.log("jsonData changed, updating editor value");
     setEditorValue(JSON.stringify(jsonData, null, 2));
   }, [jsonData]);
-  
+
   // Handle JSON editor visibility changes without clearing canvas
   useEffect(() => {
     // This effect runs after the DOM has been updated
@@ -902,142 +961,150 @@ const PaperCanvas = () => {
     }
   }, [jsonEditorVisible]);
 
-  
   // Mode system - only one mode can be active at a time
-  const [currentMode, setCurrentMode] = useState('normal'); // 'normal', 'add', 'edit', 'connect'
+  const [currentMode, setCurrentMode] = useState("normal"); // 'normal', 'add', 'edit', 'connect'
   const [pendingStockData, setPendingStockData] = useState(null);
   const [connectionStart, setConnectionStart] = useState(null);
   const [tempConnectionLine, setTempConnectionLine] = useState(null);
 
-  const addBoxWithNameAndAmount = (name, amount, shape = 'rectangle') => {
-
+  const addBoxWithNameAndAmount = (name, amount, shape = "rectangle") => {
     // Set pending stock data and enable add mode
     setPendingStockData({ name, amount, shape });
-    setCurrentMode('add');
+    setCurrentMode("add");
     // No alert - we'll use a custom cursor instead
   };
-  
+
   const placeStockAtPosition = (x, y) => {
     if (!pendingStockData) return;
-    
 
     // Generate a unique stock ID
-    const maxId = Math.max(0, ...jsonData.boxes.map(b => b.id || 0));
+    const maxId = Math.max(0, ...jsonData.boxes.map((b) => b.id || 0));
     const newStock = {
       id: maxId + 1,
       name: pendingStockData.name,
-      type: 'stock',
-      shape: pendingStockData.shape || 'rectangle',
-      amount: pendingStockData.shape === 'circle' ? '∞' : pendingStockData.amount,
+      type: "stock",
+      shape: pendingStockData.shape || "rectangle",
+      amount:
+        pendingStockData.shape === "circle" ? "∞" : pendingStockData.amount,
       position: {
         x: x,
-        y: y
-      }
+        y: y,
+      },
     };
-    setJsonData(prev => ({
+    setJsonData((prev) => ({
       ...prev,
-      boxes: [...prev.boxes, newStock]
+      boxes: [...prev.boxes, newStock],
     }));
-    
+
     // Reset pending state and return to normal mode
     setPendingStockData(null);
-    setCurrentMode('normal');
+    setCurrentMode("normal");
   };
-  
 
   // Helper function to calculate edge intersection point
   const getEdgePoint = (fromBox, toBox) => {
     const fromCenter = fromBox.bounds.center;
     const toCenter = toBox.bounds.center;
     const direction = toCenter.subtract(fromCenter).normalize();
-    
+
     // Calculate intersection with the edge of the target box
     const toBounds = toBox.bounds;
     const halfWidth = toBounds.width / 2;
     const halfHeight = toBounds.height / 2;
-    
+
     // Determine which edge the line intersects
     const absX = Math.abs(direction.x);
     const absY = Math.abs(direction.y);
-    
+
     let edgePoint;
     if (absX / halfWidth > absY / halfHeight) {
       // Intersects left or right edge
       const x = toCenter.x + (direction.x > 0 ? -halfWidth : halfWidth);
-      const y = toCenter.y - (direction.y * halfWidth / absX);
+      const y = toCenter.y - (direction.y * halfWidth) / absX;
       edgePoint = new paper.Point(x, y);
     } else {
       // Intersects top or bottom edge
-      const x = toCenter.x - (direction.x * halfHeight / absY);
+      const x = toCenter.x - (direction.x * halfHeight) / absY;
       const y = toCenter.y + (direction.y > 0 ? -halfHeight : halfHeight);
       edgePoint = new paper.Point(x, y);
     }
-    
+
     return edgePoint;
   };
 
   const createSelfConnection = (box, connectionData = null) => {
-    
     const boxBounds = box.bounds;
     const boxCenter = box.position;
     const loopRadius = 150; // Radius of the self-connection loop
     const arrowSize = 8;
-    
+
     // Position the loop on the right side of the box
     const startPoint = new paper.Point(boxBounds.right, boxCenter.y);
     const endPoint = new paper.Point(boxBounds.right, boxCenter.y - 5); // Slightly offset for arrow
-    
+
     // Create control points for a circular loop
     const controlOffset = loopRadius;
-    const control1 = new paper.Point(boxBounds.right + controlOffset, boxCenter.y - controlOffset);
-    const control2 = new paper.Point(boxBounds.right + controlOffset, boxCenter.y + controlOffset);
-    
+    const control1 = new paper.Point(
+      boxBounds.right + controlOffset,
+      boxCenter.y - controlOffset
+    );
+    const control2 = new paper.Point(
+      boxBounds.right + controlOffset,
+      boxCenter.y + controlOffset
+    );
+
     // Create the curved path
     const path = new paper.Path({
-      strokeColor: 'black',
-      strokeWidth: 2
+      strokeColor: "black",
+      strokeWidth: 2,
     });
-    
+
     path.moveTo(startPoint);
     path.cubicCurveTo(control1, control2, endPoint);
-    
+
     // Create arrow at the end point
     const arrowDirection = new paper.Point(-1, 0); // Pointing left into the box
     const perpendicular = new paper.Point(0, -1); // Perpendicular for arrow wings
-    
+
     const arrowTip = endPoint;
     const arrowBase = arrowTip.subtract(arrowDirection.multiply(arrowSize));
-    const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
-    const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
-    
+    const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize / 2));
+    const arrowRight = arrowBase.subtract(
+      perpendicular.multiply(arrowSize / 2)
+    );
+
     const arrowHead = new paper.Path({
       segments: [arrowTip, arrowLeft, arrowRight],
-      strokeColor: 'black',
+      strokeColor: "black",
       strokeWidth: 2,
-      fillColor: 'black',
-      closed: true
+      fillColor: "black",
+      closed: true,
     });
-    
+
     // Add connection name label if provided
     let nameLabel = null;
     let labelHitBox = null;
     if (connectionData && connectionData.name) {
-      const labelPosition = new paper.Point(boxBounds.right + loopRadius, boxCenter.y);
+      const labelPosition = new paper.Point(
+        boxBounds.right + loopRadius,
+        boxCenter.y
+      );
       let displayText = connectionData.name;
-      
+
       // Default values if not specified - support both numeric and percentage values
-      const amount = connectionData.amount !== undefined ? connectionData.amount : 1;
-      
+      const amount =
+        connectionData.amount !== undefined ? connectionData.amount : 1;
+
       // Always show both amounts in the label
       displayText = `${connectionData.name} (${amount})`;
       nameLabel = new paper.PointText({
         point: labelPosition,
         content: displayText,
-        fillColor: 'black',
+        fillColor: "black",
         fontSize: 12,
-        justification: 'center'
+        justification: "center",
       });
-      
+
       // Create a dotted bounding box around the text for better hit testing
       const textBounds = nameLabel.bounds;
       const padding = 4; // Add some padding around the text
@@ -1045,124 +1112,146 @@ const PaperCanvas = () => {
         rectangle: new paper.Rectangle(
           textBounds.x - padding,
           textBounds.y - padding,
-          textBounds.width + (padding * 2),
-          textBounds.height + (padding * 2)
+          textBounds.width + padding * 2,
+          textBounds.height + padding * 2
         ),
-        strokeColor: '#cccccc', // Light gray dotted border
+        strokeColor: "#cccccc", // Light gray dotted border
         strokeWidth: 1,
         dashArray: [2, 2],
-        fillColor: 'transparent'
+        fillColor: "transparent",
       });
     }
-    
+
     // Add click handler for self-connection selection
-     const handleSelfConnectionSelect = (event) => {
+    const handleSelfConnectionSelect = (event) => {
       // Use a function to get current mode to avoid closure issues
       const getCurrentMode = () => {
-        const modeSelect = document.querySelector('#mode-select');
-        return modeSelect ? modeSelect.value : 'normal';
+        const modeSelect = document.querySelector("#mode-select");
+        return modeSelect ? modeSelect.value : "normal";
       };
-      console.log('Self-connection clicked, current mode:', getCurrentMode());
-      if (getCurrentMode() === 'edit') {
-         // Use Paper.js hit testing with tolerance for better accuracy
-         const hitPoint = event.point || (event.event && event.event.point);
-         if (hitPoint) {
-           const hitResult = path.hitTest(hitPoint, {
-             stroke: true,
-             tolerance: 10 // Increase tolerance for easier clicking
-           });
-           if (hitResult || path.bounds.contains(hitPoint)) {
-             // Get connectionData from the group that will be created
-             const groupConnectionData = event.target.parent?.connectionData || connectionData;
-             console.log('Self-connection groupConnectionData:', groupConnectionData);
-             console.log('Self-connection connectionData fallback:', connectionData);
-             if (groupConnectionData) {
-               // Ensure amount is defined with a default if missing
-               const enhancedData = {
-                 ...groupConnectionData,
-                 type: 'connection',
-                 amount: groupConnectionData.amount !== undefined ? groupConnectionData.amount : 1
-               };
-               console.log("Selected self-connection with enhanced data:", enhancedData);
-               setSelectedItem(enhancedData);
-               setEditingItem(enhancedData);
-             } else {
-               setSelectedItem(null);
-               setEditingItem(null);
-             }
-             setSelectedBoxId(null);
-           }
-         }
-       }
-     };
-    
+      console.log("Self-connection clicked, current mode:", getCurrentMode());
+      if (getCurrentMode() === "edit") {
+        // Use Paper.js hit testing with tolerance for better accuracy
+        const hitPoint = event.point || (event.event && event.event.point);
+        if (hitPoint) {
+          const hitResult = path.hitTest(hitPoint, {
+            stroke: true,
+            tolerance: 10, // Increase tolerance for easier clicking
+          });
+          if (hitResult || path.bounds.contains(hitPoint)) {
+            // Get connectionData from the group that will be created
+            const groupConnectionData =
+              event.target.parent?.connectionData || connectionData;
+            console.log(
+              "Self-connection groupConnectionData:",
+              groupConnectionData
+            );
+            console.log(
+              "Self-connection connectionData fallback:",
+              connectionData
+            );
+            if (groupConnectionData) {
+              // Ensure amount is defined with a default if missing
+              const enhancedData = {
+                ...groupConnectionData,
+                type: "connection",
+                amount:
+                  groupConnectionData.amount !== undefined
+                    ? groupConnectionData.amount
+                    : 1,
+              };
+              console.log(
+                "Selected self-connection with enhanced data:",
+                enhancedData
+              );
+              setSelectedItem(enhancedData);
+              setEditingItem(enhancedData);
+            } else {
+              setSelectedItem(null);
+              setEditingItem(null);
+            }
+            setSelectedBoxId(null);
+          }
+        }
+      }
+    };
+
     // Simplified handler for direct clicks on arrow and labels
-     const handleDirectSelect = (event) => {
-       // Use a function to get current mode to avoid closure issues
-       const getCurrentMode = () => {
-         const modeSelect = document.querySelector('#mode-select');
-         return modeSelect ? modeSelect.value : 'normal';
-       };
-       if (getCurrentMode() === 'edit') {
-         // Get connectionData from the group
-         const groupConnectionData = event.target.parent?.connectionData || connectionData;
-         if (groupConnectionData) {
-           // Ensure amount is defined with defaults if missing
-           const enhancedData = {
-             ...groupConnectionData,
-             type: 'connection',
-             amount: groupConnectionData.amount !== undefined ? groupConnectionData.amount : 1,
-             transferAmount: groupConnectionData.transferAmount !== undefined ? groupConnectionData.transferAmount : 1
-           };
-           console.log("Selected connection with enhanced data:", enhancedData);
-           setSelectedItem(enhancedData);
-           setEditingItem(enhancedData);
-         } else {
-           setSelectedItem(null);
-           setEditingItem(null);
-         }
-         setSelectedBoxId(null);
-       }
-     };
-     
-     path.onMouseDown = handleSelfConnectionSelect;
-     arrowHead.onMouseDown = handleDirectSelect;
-     if (nameLabel) {
-       nameLabel.onMouseDown = handleDirectSelect;
-     }
-     if (labelHitBox) {
-       labelHitBox.onMouseDown = handleDirectSelect;
-     }
-    
-    const connectionGroup = nameLabel ? 
-      (labelHitBox ? new paper.Group([path, arrowHead, nameLabel, labelHitBox]) : new paper.Group([path, arrowHead, nameLabel])) : 
-      new paper.Group([path, arrowHead]);
-    
+    const handleDirectSelect = (event) => {
+      // Use a function to get current mode to avoid closure issues
+      const getCurrentMode = () => {
+        const modeSelect = document.querySelector("#mode-select");
+        return modeSelect ? modeSelect.value : "normal";
+      };
+      if (getCurrentMode() === "edit") {
+        // Get connectionData from the group
+        const groupConnectionData =
+          event.target.parent?.connectionData || connectionData;
+        if (groupConnectionData) {
+          // Ensure amount is defined with defaults if missing
+          const enhancedData = {
+            ...groupConnectionData,
+            type: "connection",
+            amount:
+              groupConnectionData.amount !== undefined
+                ? groupConnectionData.amount
+                : 1,
+            transferAmount:
+              groupConnectionData.transferAmount !== undefined
+                ? groupConnectionData.transferAmount
+                : 1,
+          };
+          console.log("Selected connection with enhanced data:", enhancedData);
+          setSelectedItem(enhancedData);
+          setEditingItem(enhancedData);
+        } else {
+          setSelectedItem(null);
+          setEditingItem(null);
+        }
+        setSelectedBoxId(null);
+      }
+    };
+
+    path.onMouseDown = handleSelfConnectionSelect;
+    arrowHead.onMouseDown = handleDirectSelect;
+    if (nameLabel) {
+      nameLabel.onMouseDown = handleDirectSelect;
+    }
+    if (labelHitBox) {
+      labelHitBox.onMouseDown = handleDirectSelect;
+    }
+
+    const connectionGroup = nameLabel
+      ? labelHitBox
+        ? new paper.Group([path, arrowHead, nameLabel, labelHitBox])
+        : new paper.Group([path, arrowHead, nameLabel])
+      : new paper.Group([path, arrowHead]);
+
     if (connectionData) {
       connectionGroup.connectionData = connectionData;
     }
-    
+
     // Add group handler for fallback
     connectionGroup.onMouseDown = handleSelfConnectionSelect;
-    
+
     return connectionGroup;
   };
 
   const createConnection = (box1, box2, connectionData = null) => {
     // Check if this is a self-connection
     const isSelfConnection = box1.stockId === box2.stockId;
-    
+
     if (isSelfConnection) {
       return createSelfConnection(box1, connectionData);
     }
-    
+
     const end = getEdgePoint(box1, box2); // from box1 (from) to box2 (to)
-    const start = getEdgePoint(box2, box1);   // to box2 (to) from box1 (from)
-    
+    const start = getEdgePoint(box2, box1); // to box2 (to) from box1 (from)
+
     const arrowSize = 8;
     // Calculate direction and snap to nearest axis (horizontal or vertical only)
     const rawDirection = end.subtract(start);
-    
+
     let direction;
     if (Math.abs(rawDirection.x) > Math.abs(rawDirection.y)) {
       // Horizontal direction
@@ -1174,8 +1263,10 @@ const PaperCanvas = () => {
     const perpendicular = new paper.Point(-direction.y, direction.x);
     // Calculate the base of the arrowhead
     const arrowBase = end.subtract(direction.multiply(arrowSize));
-    const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
-    const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
+    const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize / 2));
+    const arrowRight = arrowBase.subtract(
+      perpendicular.multiply(arrowSize / 2)
+    );
     // The curve should end at the base of the arrow, not the box
     // Handle calculations should follow the arrow direction
     let handle1, handle2;
@@ -1189,20 +1280,20 @@ const PaperCanvas = () => {
       handle2 = new paper.Point(arrowBase.x, (start.y + arrowBase.y) / 2);
     }
     const path = new paper.Path({
-        segments: [new paper.Segment(start), new paper.Segment(arrowBase)],
-        strokeColor: 'black',
-        strokeWidth: 2
+      segments: [new paper.Segment(start), new paper.Segment(arrowBase)],
+      strokeColor: "black",
+      strokeWidth: 2,
     });
     path.segments[0].handleOut = handle1.subtract(start);
     path.segments[1].handleIn = handle2.subtract(arrowBase);
     // Arrow always on 'to' side (end) - directional based on connection
     const arrowTip = end;
     const arrowHead = new paper.Path({
-        segments: [arrowTip, arrowLeft, arrowRight],
-        strokeColor: 'black',
-        strokeWidth: 2,
-        fillColor: 'black',
-        closed: true
+      segments: [arrowTip, arrowLeft, arrowRight],
+      strokeColor: "black",
+      strokeWidth: 2,
+      fillColor: "black",
+      closed: true,
     });
     // Add feedback loop name label if connection data is provided
     let nameLabel = null;
@@ -1210,80 +1301,87 @@ const PaperCanvas = () => {
     if (connectionData && connectionData.name) {
       const midPoint = start.add(arrowBase).divide(2);
       let displayText = connectionData.name;
-      
+
       // Default values if not specified
-      const amount = connectionData.amount !== undefined ? connectionData.amount : 1;
-      
+      const amount =
+        connectionData.amount !== undefined ? connectionData.amount : 1;
+
       // Find the source and target stocks to check if they're infinite
       const fromStockId = connectionData.fromStockId;
       const toStockId = connectionData.toStockId;
-      
+
       // Find the stock data from jsonData
-      const fromStock = jsonData.boxes.find(box => box.id === fromStockId);
-      const toStock = jsonData.boxes.find(box => box.id === toStockId);
-      
-      const isFromInfinite = fromStock && fromStock.shape === 'circle';
-      const isToInfinite = toStock && toStock.shape === 'circle';
-      
+      const fromStock = jsonData.boxes.find((box) => box.id === fromStockId);
+      const toStock = jsonData.boxes.find((box) => box.id === toStockId);
+
+      const isFromInfinite = fromStock && fromStock.shape === "circle";
+      const isToInfinite = toStock && toStock.shape === "circle";
+
       displayText = `${connectionData.name} (${amount})`;
-      
+
       nameLabel = new paper.PointText({
         point: midPoint.add(new paper.Point(0, -10)),
         content: displayText,
-        fillColor: 'black',
+        fillColor: "black",
         fontSize: 12,
-        justification: 'center'
+        justification: "center",
       });
-      
+
       // Create a dotted bounding box around the text for better hit testing
       const textBounds = nameLabel.bounds;
       const padding = 4; // Add some padding around the text
       labelHitBox = new paper.Path.Rectangle({
-         rectangle: new paper.Rectangle(
-           textBounds.x - padding,
-           textBounds.y - padding,
-           textBounds.width + (padding * 2),
-           textBounds.height + (padding * 2)
-         ),
-         strokeColor: '#cccccc', // Light gray dotted border
-         strokeWidth: 1,
-         dashArray: [2, 2],
-         fillColor: 'transparent'
-       });
+        rectangle: new paper.Rectangle(
+          textBounds.x - padding,
+          textBounds.y - padding,
+          textBounds.width + padding * 2,
+          textBounds.height + padding * 2
+        ),
+        strokeColor: "#cccccc", // Light gray dotted border
+        strokeWidth: 1,
+        dashArray: [2, 2],
+        fillColor: "transparent",
+      });
     }
     // Add click handler for connection selection to all relevant items
     const handleConnectionSelect = (event) => {
       // Use a function to get current mode to avoid closure issues
       const getCurrentMode = () => {
-        const modeSelect = document.querySelector('#mode-select');
-        return modeSelect ? modeSelect.value : 'normal';
+        const modeSelect = document.querySelector("#mode-select");
+        return modeSelect ? modeSelect.value : "normal";
       };
-      if (getCurrentMode() === 'edit') {
+      if (getCurrentMode() === "edit") {
         // Use Paper.js hit testing with tolerance for better accuracy
         const hitPoint = event.point || (event.event && event.event.point);
         if (hitPoint) {
           const hitResult = path.hitTest(hitPoint, {
             stroke: true,
-            tolerance: 10 // Increase tolerance for easier clicking
+            tolerance: 10, // Increase tolerance for easier clicking
           });
           if (hitResult || path.bounds.contains(hitPoint)) {
             // Get connectionData from the group that will be created
-            const groupConnectionData = event.target.parent?.connectionData || connectionData;
-            
+            const groupConnectionData =
+              event.target.parent?.connectionData || connectionData;
+
             if (groupConnectionData) {
               // Ensure amount has a default value if missing
-              const amount = groupConnectionData.amount !== undefined ? 
-                groupConnectionData.amount : 1;
-              
+              const amount =
+                groupConnectionData.amount !== undefined
+                  ? groupConnectionData.amount
+                  : 1;
+
               // Create a properly initialized selection object
               const selectionData = {
                 ...groupConnectionData,
-                type: 'connection',
-                amount: amount
+                type: "connection",
+                amount: amount,
               };
-              
-              console.log("Selected connection with initialized values:", selectionData);
-              
+
+              console.log(
+                "Selected connection with initialized values:",
+                selectionData
+              );
+
               setSelectedItem(selectionData);
               setEditingItem(selectionData);
               setSelectedBoxId(null);
@@ -1294,36 +1392,44 @@ const PaperCanvas = () => {
     };
     // Simplified handler for direct clicks on arrow and labels
     const handleDirectSelect = (event) => {
-      if (currentMode === 'edit') {
+      if (currentMode === "edit") {
         // Get connectionData from the group
-        const groupConnectionData = event.target.parent?.connectionData || connectionData;
-        
+        const groupConnectionData =
+          event.target.parent?.connectionData || connectionData;
+
         if (groupConnectionData) {
           // Ensure amount has default values if missing
           // Preserve string format for percentage values
-          const amount = groupConnectionData.amount !== undefined ?
-  groupConnectionData.amount : 1;
-            
-          const transferAmount = groupConnectionData.transferAmount !== undefined ? 
-            groupConnectionData.transferAmount : 1;
-          
+          const amount =
+            groupConnectionData.amount !== undefined
+              ? groupConnectionData.amount
+              : 1;
+
+          const transferAmount =
+            groupConnectionData.transferAmount !== undefined
+              ? groupConnectionData.transferAmount
+              : 1;
+
           // Create a properly initialized selection object
           const selectionData = {
             ...groupConnectionData,
-            type: 'connection',
+            type: "connection",
             amount: amount,
-            transferAmount: transferAmount
+            transferAmount: transferAmount,
           };
-          
-          console.log("Direct selected connection with initialized values:", selectionData);
-          
+
+          console.log(
+            "Direct selected connection with initialized values:",
+            selectionData
+          );
+
           setSelectedItem(selectionData);
           setEditingItem(selectionData);
           setSelectedBoxId(null);
         }
       }
     };
-    
+
     path.onMouseDown = handleConnectionSelect;
     arrowHead.onMouseDown = handleDirectSelect;
     if (nameLabel) {
@@ -1332,9 +1438,11 @@ const PaperCanvas = () => {
     if (labelHitBox) {
       labelHitBox.onMouseDown = handleDirectSelect;
     }
-    const connectionGroup = nameLabel ? 
-      (labelHitBox ? new paper.Group([path, arrowHead, nameLabel, labelHitBox]) : new paper.Group([path, arrowHead, nameLabel])) : 
-      new paper.Group([path, arrowHead]);
+    const connectionGroup = nameLabel
+      ? labelHitBox
+        ? new paper.Group([path, arrowHead, nameLabel, labelHitBox])
+        : new paper.Group([path, arrowHead, nameLabel])
+      : new paper.Group([path, arrowHead]);
     if (connectionData) {
       connectionGroup.connectionData = connectionData;
     }
@@ -1345,29 +1453,41 @@ const PaperCanvas = () => {
 
   const refreshConnections = (updatedJsonData) => {
     console.log("refreshConnections called with data:", updatedJsonData);
-    
+
     // Remove existing connections
-    paperState.current.connections.forEach(conn => conn.remove());
+    paperState.current.connections.forEach((conn) => conn.remove());
     const newConnections = [];
-    
+
     // Recreate connections with updated data
     if (updatedJsonData.connections) {
-      console.log("Processing", updatedJsonData.connections.length, "connections");
-      updatedJsonData.connections.forEach(connData => {
+      console.log(
+        "Processing",
+        updatedJsonData.connections.length,
+        "connections"
+      );
+      updatedJsonData.connections.forEach((connData) => {
         console.log("Creating connection:", connData);
-        const fromStock = paperState.current.boxes.find(box => box.stockId === connData.fromStockId);
-        const toStock = paperState.current.boxes.find(box => box.stockId === connData.toStockId);
-        
+        const fromStock = paperState.current.boxes.find(
+          (box) => box.stockId === connData.fromStockId
+        );
+        const toStock = paperState.current.boxes.find(
+          (box) => box.stockId === connData.toStockId
+        );
+
         if (fromStock && toStock) {
-          console.log(`Found stock objects - from: ${connData.fromStockId}, to: ${connData.toStockId}`);
+          console.log(
+            `Found stock objects - from: ${connData.fromStockId}, to: ${connData.toStockId}`
+          );
           const connection = createConnection(fromStock, toStock, connData);
           newConnections.push(connection);
         } else {
-          console.warn(`Could not find stock objects for connection - from: ${connData.fromStockId}, to: ${connData.toStockId}`);
+          console.warn(
+            `Could not find stock objects for connection - from: ${connData.fromStockId}, to: ${connData.toStockId}`
+          );
         }
       });
     }
-    
+
     console.log("Created", newConnections.length, "new connections");
     paperState.current.connections = newConnections;
     setConnections(newConnections);
@@ -1379,82 +1499,105 @@ const PaperCanvas = () => {
     }
   };
 
-
-
   const runSimulation = () => {
     if (!jsonData || !jsonData.connections || !jsonData.boxes) return;
-    
+
     // Create a copy of the current stock amounts
     // Use amount as original, simulationAmount for simulation values
-    const updatedBoxes = jsonData.boxes.map(box => {
+    const updatedBoxes = jsonData.boxes.map((box) => {
       console.log(`Processing box ${box.name} for simulation:`, {
         id: box.id,
         amount: box.amount,
-        simulationAmount: box.simulationAmount
-      });
-      
-      return {
-        ...box,
-        simulationAmount: box.simulationAmount !== undefined ? box.simulationAmount : box.amount // Initialize simulation amount if needed
-      };
-    });
-    
-    // Group connections by type for ordered processing
-    const connections = [...jsonData.connections];
-    const outflowFromCircles = connections.filter(conn => {
-      const fromStock = updatedBoxes.find(box => box.id === conn.fromStockId);
-      return fromStock && fromStock.shape === 'circle';
-    });
-    
-    const inflowToCircles = connections.filter(conn => {
-      const toStock = updatedBoxes.find(box => box.id === conn.toStockId);
-      return toStock && toStock.shape === 'circle';
-    }).filter(conn => {
-      // Exclude connections that are already in outflowFromCircles
-      const fromStock = updatedBoxes.find(box => box.id === conn.fromStockId);
-      return !(fromStock && fromStock.shape === 'circle');
-    });
-    
-    const otherConnections = connections.filter(conn => {
-      const fromStock = updatedBoxes.find(box => box.id === conn.fromStockId);
-      const toStock = updatedBoxes.find(box => box.id === conn.toStockId);
-      return !(fromStock && fromStock.shape === 'circle') && !(toStock && toStock.shape === 'circle');
-    });
-    
-    // Process connections in the specified order: outflow from circles, other connections, inflow to circles
-    const orderedConnections = [...outflowFromCircles, ...otherConnections, ...inflowToCircles];
-    
-    // Process each connection in the ordered sequence
-    orderedConnections.forEach(connection => {
-      const fromStock = updatedBoxes.find(box => box.id === connection.fromStockId);
-      const toStock = updatedBoxes.find(box => box.id === connection.toStockId);
-      
-      // Check if this is a self-connection
-      const isSelfConnection = connection.fromStockId === connection.toStockId;
-      console.log(`Processing connection ${connection.name} (ID: ${connection.id})`, {
-        fromId: connection.fromStockId,
-        toId: connection.toStockId,
-        isSelfConnection,
-        amount: connection.amount
+        simulationAmount: box.simulationAmount,
       });
 
+      return {
+        ...box,
+        simulationAmount:
+          box.simulationAmount !== undefined
+            ? box.simulationAmount
+            : box.amount, // Initialize simulation amount if needed
+      };
+    });
+
+    // Group connections by type for ordered processing
+    const connections = [...jsonData.connections];
+    const outflowFromCircles = connections.filter((conn) => {
+      const fromStock = updatedBoxes.find((box) => box.id === conn.fromStockId);
+      return fromStock && fromStock.shape === "circle";
+    });
+
+    const inflowToCircles = connections
+      .filter((conn) => {
+        const toStock = updatedBoxes.find((box) => box.id === conn.toStockId);
+        return toStock && toStock.shape === "circle";
+      })
+      .filter((conn) => {
+        // Exclude connections that are already in outflowFromCircles
+        const fromStock = updatedBoxes.find(
+          (box) => box.id === conn.fromStockId
+        );
+        return !(fromStock && fromStock.shape === "circle");
+      });
+
+    const otherConnections = connections.filter((conn) => {
+      const fromStock = updatedBoxes.find((box) => box.id === conn.fromStockId);
+      const toStock = updatedBoxes.find((box) => box.id === conn.toStockId);
+      return (
+        !(fromStock && fromStock.shape === "circle") &&
+        !(toStock && toStock.shape === "circle")
+      );
+    });
+
+    // Process connections in the specified order: outflow from circles, other connections, inflow to circles
+    const orderedConnections = [
+      ...outflowFromCircles,
+      ...otherConnections,
+      ...inflowToCircles,
+    ];
+
+    // Process each connection in the ordered sequence
+    orderedConnections.forEach((connection) => {
+      const fromStock = updatedBoxes.find(
+        (box) => box.id === connection.fromStockId
+      );
+      const toStock = updatedBoxes.find(
+        (box) => box.id === connection.toStockId
+      );
+
+      // Check if this is a self-connection
+      const isSelfConnection = connection.fromStockId === connection.toStockId;
+      console.log(
+        `Processing connection ${connection.name} (ID: ${connection.id})`,
+        {
+          fromId: connection.fromStockId,
+          toId: connection.toStockId,
+          isSelfConnection,
+          amount: connection.amount,
+        }
+      );
+
       // Preserve the original format (number or percentage string)
-      const amountRaw = connection.amount !== undefined && connection.amount !== null ?
-        connection.amount : 1;
-      
+      const amountRaw =
+        connection.amount !== undefined && connection.amount !== null
+          ? connection.amount
+          : 1;
+
       if (fromStock && toStock) {
         // Special handling for self-connections
         if (connection.fromStockId === connection.toStockId) {
           let actualAmount = 0;
-          if (typeof amountRaw === 'string' && amountRaw.includes('%')) {
-            const percentageStr = amountRaw.replace('%', '').trim();
+          if (typeof amountRaw === "string" && amountRaw.includes("%")) {
+            const percentageStr = amountRaw.replace("%", "").trim();
             const parsedPercentage = parseFloat(percentageStr);
             if (isNaN(parsedPercentage)) {
-              console.warn(`Invalid percentage value: ${amountRaw}, defaulting to 0`);
+              console.warn(
+                `Invalid percentage value: ${amountRaw}, defaulting to 0`
+              );
               actualAmount = 0;
             } else {
               const percentage = parsedPercentage / 100;
-              if (fromStock.shape !== 'circle') {
+              if (fromStock.shape !== "circle") {
                 actualAmount = fromStock.simulationAmount * percentage;
               } else {
                 // For infinite stock, percentage is treated as fixed value
@@ -1466,24 +1609,34 @@ const PaperCanvas = () => {
             actualAmount = isNaN(parsedNumber) ? 0 : parsedNumber;
           }
 
-          const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ?
-            fromStock.simulationAmount : (function() {
-              const parsed = parseFloat(fromStock.simulationAmount);
-              return !isNaN(parsed) ? parsed : 0;
-            })();
-          fromStock.simulationAmount = Math.max(0, currentAmount + (isNaN(actualAmount) ? 0 : actualAmount));
-          console.log(`Self-connection on ${fromStock.name}: Added ${actualAmount}, New amount: ${fromStock.simulationAmount}`);
+          const currentAmount =
+            typeof fromStock.simulationAmount === "number" &&
+            !isNaN(fromStock.simulationAmount)
+              ? fromStock.simulationAmount
+              : (function () {
+                  const parsed = parseFloat(fromStock.simulationAmount);
+                  return !isNaN(parsed) ? parsed : 0;
+                })();
+          fromStock.simulationAmount = Math.max(
+            0,
+            currentAmount + (isNaN(actualAmount) ? 0 : actualAmount)
+          );
+          console.log(
+            `Self-connection on ${fromStock.name}: Added ${actualAmount}, New amount: ${fromStock.simulationAmount}`
+          );
         } else {
           // Normal connection processing (source and destination are different)
-          const isFromInfinite = fromStock.shape === 'circle';
-          const isToInfinite = toStock.shape === 'circle';
+          const isFromInfinite = fromStock.shape === "circle";
+          const isToInfinite = toStock.shape === "circle";
 
           let actualAmount = 0;
-          if (typeof amountRaw === 'string' && amountRaw.includes('%')) {
-            const percentageStr = amountRaw.replace('%', '').trim();
+          if (typeof amountRaw === "string" && amountRaw.includes("%")) {
+            const percentageStr = amountRaw.replace("%", "").trim();
             const parsedPercentage = parseFloat(percentageStr);
             if (isNaN(parsedPercentage)) {
-              console.warn(`Invalid percentage value: ${amountRaw}, defaulting to 0`);
+              console.warn(
+                `Invalid percentage value: ${amountRaw}, defaulting to 0`
+              );
               actualAmount = 0;
             } else {
               const percentage = parsedPercentage / 100;
@@ -1499,21 +1652,31 @@ const PaperCanvas = () => {
           }
 
           if (!isFromInfinite) {
-            const isAmountZero = (typeof amountRaw === 'string' && amountRaw.replace('%', '').trim() === '0') || Number(amountRaw) === 0;
+            const isAmountZero =
+              (typeof amountRaw === "string" &&
+                amountRaw.replace("%", "").trim() === "0") ||
+              Number(amountRaw) === 0;
             if (!isAmountZero) {
-              const currentAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ?
-                fromStock.simulationAmount : (function() {
-                  const parsed = parseFloat(fromStock.simulationAmount);
-                  return !isNaN(parsed) ? parsed : 0;
-                })();
+              const currentAmount =
+                typeof fromStock.simulationAmount === "number" &&
+                !isNaN(fromStock.simulationAmount)
+                  ? fromStock.simulationAmount
+                  : (function () {
+                      const parsed = parseFloat(fromStock.simulationAmount);
+                      return !isNaN(parsed) ? parsed : 0;
+                    })();
 
               if (currentAmount < actualAmount) {
                 actualAmount = Math.max(0, currentAmount);
-                console.log(`Insufficient amount in ${fromStock.name}. Limited amount to ${actualAmount}`);
+                console.log(
+                  `Insufficient amount in ${fromStock.name}. Limited amount to ${actualAmount}`
+                );
               }
 
               if (actualAmount <= 0) {
-                console.log(`Connection from ${fromStock.name} to ${toStock.name} is inactive - no amount`);
+                console.log(
+                  `Connection from ${fromStock.name} to ${toStock.name} is inactive - no amount`
+                );
                 return;
               }
             }
@@ -1522,11 +1685,14 @@ const PaperCanvas = () => {
           let amountToAdd = actualAmount;
 
           if (!isToInfinite) {
-            const currentToAmount = typeof toStock.simulationAmount === 'number' && !isNaN(toStock.simulationAmount) ?
-              toStock.simulationAmount : (function() {
-                const parsed = parseFloat(toStock.simulationAmount);
-                return !isNaN(parsed) ? parsed : 0;
-              })();
+            const currentToAmount =
+              typeof toStock.simulationAmount === "number" &&
+              !isNaN(toStock.simulationAmount)
+                ? toStock.simulationAmount
+                : (function () {
+                    const parsed = parseFloat(toStock.simulationAmount);
+                    return !isNaN(parsed) ? parsed : 0;
+                  })();
 
             const capacity = toStock.capacity > 0 ? toStock.capacity : Infinity;
             const remainingCapacity = capacity - currentToAmount;
@@ -1540,92 +1706,115 @@ const PaperCanvas = () => {
           }
 
           if (!isFromInfinite) {
-            const currentFromAmount = typeof fromStock.simulationAmount === 'number' && !isNaN(fromStock.simulationAmount) ?
-              fromStock.simulationAmount : (function() {
-                const parsed = parseFloat(fromStock.simulationAmount);
-                return !isNaN(parsed) ? parsed : 0;
-              })();
+            const currentFromAmount =
+              typeof fromStock.simulationAmount === "number" &&
+              !isNaN(fromStock.simulationAmount)
+                ? fromStock.simulationAmount
+                : (function () {
+                    const parsed = parseFloat(fromStock.simulationAmount);
+                    return !isNaN(parsed) ? parsed : 0;
+                  })();
 
             const amountToDeduct = Math.min(currentFromAmount, amountToAdd);
 
-            fromStock.simulationAmount = Math.max(0, currentFromAmount - (isNaN(amountToDeduct) ? 0 : amountToDeduct));
-            console.log(`Deducted ${amountToDeduct} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`);
+            fromStock.simulationAmount = Math.max(
+              0,
+              currentFromAmount - (isNaN(amountToDeduct) ? 0 : amountToDeduct)
+            );
+            console.log(
+              `Deducted ${amountToDeduct} from ${fromStock.name}, new amount: ${fromStock.simulationAmount}`
+            );
             amountToAdd = amountToDeduct; // The actual amount added cannot exceed what was deducted
           }
 
           if (!isToInfinite) {
-            const currentToAmount = typeof toStock.simulationAmount === 'number' && !isNaN(toStock.simulationAmount) ?
-              toStock.simulationAmount : (function() {
-                const parsed = parseFloat(toStock.simulationAmount);
-                return !isNaN(parsed) ? parsed : 0;
-              })();
-            toStock.simulationAmount = currentToAmount + (isNaN(amountToAdd) ? 0 : amountToAdd);
-            console.log(`Added ${amountToAdd} to ${toStock.name}, new amount: ${toStock.simulationAmount}`);
+            const currentToAmount =
+              typeof toStock.simulationAmount === "number" &&
+              !isNaN(toStock.simulationAmount)
+                ? toStock.simulationAmount
+                : (function () {
+                    const parsed = parseFloat(toStock.simulationAmount);
+                    return !isNaN(parsed) ? parsed : 0;
+                  })();
+            toStock.simulationAmount =
+              currentToAmount + (isNaN(amountToAdd) ? 0 : amountToAdd);
+            console.log(
+              `Added ${amountToAdd} to ${toStock.name}, new amount: ${toStock.simulationAmount}`
+            );
           }
         }
       }
     });
-    
+
     // Update the JSON data - keep original amount unchanged, but include simulation amount for display
     const updatedJsonData = {
       ...jsonData,
-      boxes: updatedBoxes.map(box => {
+      boxes: updatedBoxes.map((box) => {
         // Ensure we maintain all the box properties, with updated simulation values
         const updatedBox = {
           ...box,
           // Keep the original amount unchanged
           amount: box.amount,
           // Make sure simulationAmount is always included
-          simulationAmount: box.simulationAmount
+          simulationAmount: box.simulationAmount,
         };
-        
+
         console.log(`Updated box ${box.name} after simulation:`, {
           id: updatedBox.id,
           amount: updatedBox.amount,
-          simulationAmount: updatedBox.simulationAmount
+          simulationAmount: updatedBox.simulationAmount,
         });
-        
+
         return updatedBox;
-      })
+      }),
     };
-    
+
     // Update the UI with the simulation results
     console.log("Setting JSON data with simulation results:", updatedJsonData);
-    console.log("Simulation amounts for each stock:", 
-      updatedJsonData.boxes.map(box => ({
+    console.log(
+      "Simulation amounts for each stock:",
+      updatedJsonData.boxes.map((box) => ({
         id: box.id,
         name: box.name,
         amount: box.amount,
-        simulationAmount: box.simulationAmount
+        simulationAmount: box.simulationAmount,
       }))
     );
-    
+
     setJsonData(updatedJsonData);
     // Don't update the editor value to avoid overwriting the original model
     // setEditorValue(JSON.stringify(updatedJsonData, null, 2));
-    
+
     // Increment simulation step counter
-    setSimulationSteps(prev => prev + 1);
-    
+    setSimulationSteps((prev) => prev + 1);
+
     // Record simulation history for plotting
     const currentStep = simulationSteps + 1;
     const stepData = {
       step: currentStep,
-      stocks: updatedBoxes.map(box => {
+      stocks: updatedBoxes.map((box) => {
         // Make sure all IDs are stored as strings to match the select element value
         // The select element always provides values as strings
         return {
           id: String(box.id), // Convert ID to string to ensure type consistency with dropdown
-          name: box.name || box.stockName || '',
-          simulationAmount: box.simulationAmount !== undefined ? box.simulationAmount : box.amount
+          name: box.name || box.stockName || "",
+          simulationAmount:
+            box.simulationAmount !== undefined
+              ? box.simulationAmount
+              : box.amount,
         };
-      })
+      }),
     };
-    console.log('Stock data being recorded:', stepData.stocks);
-    setSimulationHistory(prev => [...prev, stepData]);
-    
-    console.log('Recording simulation history step:', currentStep, 'with stocks:', stepData.stocks);
-    
+    console.log("Stock data being recorded:", stepData.stocks);
+    setSimulationHistory((prev) => [...prev, stepData]);
+
+    console.log(
+      "Recording simulation history step:",
+      currentStep,
+      "with stocks:",
+      stepData.stocks
+    );
+
     // Remove the refreshBoxes call - not needed anymore
     // refreshBoxes(updatedJsonData); // REMOVED
   };
@@ -1639,30 +1828,30 @@ const PaperCanvas = () => {
   const resetSimulation = () => {
     // Reset simulation step counter
     setSimulationSteps(0);
-    
+
     // Clear simulation history
     setSimulationHistory([]);
-    
+
     // Reset simulation amounts to original amounts
     if (jsonData && jsonData.boxes) {
-      const resetBoxes = jsonData.boxes.map(box => {
+      const resetBoxes = jsonData.boxes.map((box) => {
         // Reset simulationAmount to match the original amount
         return {
           ...box,
-          simulationAmount: box.amount
+          simulationAmount: box.amount,
         };
       });
-      
+
       const resetJsonData = {
         ...jsonData,
-        boxes: resetBoxes
+        boxes: resetBoxes,
       };
-      
+
       // Update the UI with reset data
       setJsonData(resetJsonData);
       // Don't update the editor to preserve the original model
       // setEditorValue(JSON.stringify(resetJsonData, null, 2));
-      
+
       // Remove this line:
       // refreshBoxes(resetJsonData); // REMOVED
     }
@@ -1670,15 +1859,15 @@ const PaperCanvas = () => {
 
   const updateConnectionsOnDrag = (draggedBox, boxIndex) => {
     // Update JSON data for the dragged box
-    setJsonData(prev => {
+    setJsonData((prev) => {
       const newBoxes = [...prev.boxes];
       newBoxes[boxIndex] = {
         ...newBoxes[boxIndex],
         position: {
           x: Math.round(draggedBox.position.x),
-          y: Math.round(draggedBox.position.y)
+          y: Math.round(draggedBox.position.y),
         },
-        amount: newBoxes[boxIndex].amount || 0
+        amount: newBoxes[boxIndex].amount || 0,
       };
       return { ...prev, boxes: newBoxes };
     });
@@ -1689,29 +1878,39 @@ const PaperCanvas = () => {
       const connection = paperState.current.connections[i];
       if (!connection) return;
       // Find the from and to boxes by stockId
-      const fromBox = paperState.current.boxes.find(b => b.stockId === connData.fromStockId);
-      const toBox = paperState.current.boxes.find(b => b.stockId === connData.toStockId);
+      const fromBox = paperState.current.boxes.find(
+        (b) => b.stockId === connData.fromStockId
+      );
+      const toBox = paperState.current.boxes.find(
+        (b) => b.stockId === connData.toStockId
+      );
       if (!fromBox || !toBox) return;
-      
+
       // Check if this is a self-connection
       if (connData.fromStockId === connData.toStockId) {
         // Only update self-connection if the dragged box is the same as the self-connection's box
         if (draggedBox.stockId !== connData.fromStockId) {
           return; // Skip updating this self-connection if it's not the dragged box
         }
-        
+
         // For self-connections, update the position but keep the same relative structure
         const boxBounds = fromBox.bounds;
         const boxCenter = fromBox.position;
         const loopRadius = 150;
-        
+
         // Update the self-connection position
         const startPoint = new paper.Point(boxBounds.right, boxCenter.y);
         const endPoint = new paper.Point(boxBounds.right, boxCenter.y - 5);
         const controlOffset = loopRadius;
-        const control1 = new paper.Point(boxBounds.right + controlOffset, boxCenter.y - controlOffset);
-        const control2 = new paper.Point(boxBounds.right + controlOffset, boxCenter.y + controlOffset);
-        
+        const control1 = new paper.Point(
+          boxBounds.right + controlOffset,
+          boxCenter.y - controlOffset
+        );
+        const control2 = new paper.Point(
+          boxBounds.right + controlOffset,
+          boxCenter.y + controlOffset
+        );
+
         const path = connection.children[0];
         if (path && path.segments) {
           path.segments[0].point = startPoint;
@@ -1719,7 +1918,7 @@ const PaperCanvas = () => {
           path.segments[0].handleOut = control1.subtract(startPoint);
           path.segments[1].handleIn = control2.subtract(endPoint);
         }
-        
+
         // Update arrow position for self-connection
         const arrowHead = connection.children[1];
         if (arrowHead && arrowHead.segments) {
@@ -1727,33 +1926,40 @@ const PaperCanvas = () => {
           const arrowDirection = new paper.Point(-1, 0);
           const perpendicular = new paper.Point(0, -1);
           const arrowTip = endPoint;
-          const arrowBase = arrowTip.subtract(arrowDirection.multiply(arrowSize));
-          const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
-          const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
-          
+          const arrowBase = arrowTip.subtract(
+            arrowDirection.multiply(arrowSize)
+          );
+          const arrowLeft = arrowBase.add(
+            perpendicular.multiply(arrowSize / 2)
+          );
+          const arrowRight = arrowBase.subtract(
+            perpendicular.multiply(arrowSize / 2)
+          );
+
           arrowHead.segments[0].point = arrowTip;
           arrowHead.segments[1].point = arrowLeft;
           arrowHead.segments[2].point = arrowRight;
         }
-        
+
         // Update name label position if it exists
         if (connection.children[2]) {
-          const labelPosition = new paper.Point(boxBounds.right + loopRadius, boxCenter.y);
+          const labelPosition = new paper.Point(
+            boxBounds.right + loopRadius,
+            boxCenter.y
+          );
           connection.children[2].position = labelPosition;
         }
-        
+
         return; // Skip regular connection logic for self-connections
       }
-      
 
-      
       // Ensure direction is consistent with connection data: from -> to
       const end = getEdgePoint(fromBox, toBox);
       const start = getEdgePoint(toBox, fromBox);
       const arrowSize = 8;
       // Calculate direction and snap to nearest axis (horizontal or vertical only)
       const rawDirection = end.subtract(start);
-      
+
       let direction;
       if (Math.abs(rawDirection.x) > Math.abs(rawDirection.y)) {
         // Horizontal direction
@@ -1765,8 +1971,10 @@ const PaperCanvas = () => {
       const perpendicular = new paper.Point(-direction.y, direction.x);
       const arrowBase = end.subtract(direction.multiply(arrowSize));
       // Ensure arrow points in correct direction: from -> to
-      const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize/2));
-      const arrowRight = arrowBase.subtract(perpendicular.multiply(arrowSize/2));
+      const arrowLeft = arrowBase.add(perpendicular.multiply(arrowSize / 2));
+      const arrowRight = arrowBase.subtract(
+        perpendicular.multiply(arrowSize / 2)
+      );
       // The curve should end at the base of the arrow, not the box
       // Handle calculations should follow the arrow direction
       let handle1, handle2;
@@ -1790,7 +1998,7 @@ const PaperCanvas = () => {
       const arrowHead = connection.children[1];
       if (arrowHead && arrowHead.segments) {
         // Match the creation order: [arrowTip, arrowLeft, arrowRight]
-        arrowHead.segments[0].point = end;  // arrowTip
+        arrowHead.segments[0].point = end; // arrowTip
         arrowHead.segments[1].point = arrowLeft;
         arrowHead.segments[2].point = arrowRight;
       }
@@ -1806,31 +2014,36 @@ const PaperCanvas = () => {
 
   // Toolbox rendering function
   const renderToolbox = () => (
-    <div 
+    <div
       style={{
-        position: 'absolute',
+        position: "absolute",
         top: toolboxPosition.y,
         left: toolboxPosition.x,
         zIndex: 10,
-        backgroundColor: '#f0f0f0',
-        border: '1px solid #ccc',
-        borderRadius: '5px',
-        boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-        width: toolboxCollapsed ? '40px' : '300px',
-        transition: 'width 0.3s ease',
-        overflow: 'hidden'
+        backgroundColor: "#f0f0f0",
+        border: "1px solid #ccc",
+        borderRadius: "5px",
+        boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+        width: toolboxCollapsed ? "40px" : "300px",
+        transition: "width 0.3s ease",
+        overflow: "hidden",
       }}
     >
       {/* Toolbox header with drag handle and collapse button */}
-      <div 
+      <div
         style={{
-          padding: '8px',
-          backgroundColor: currentMode === 'add' ? '#e0ffe0' : currentMode === 'connect' ? '#e0e0ff' : '#e0e0e0',
-          cursor: 'move',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          transition: 'background-color 0.3s ease'
+          padding: "8px",
+          backgroundColor:
+            currentMode === "add"
+              ? "#e0ffe0"
+              : currentMode === "connect"
+              ? "#e0e0ff"
+              : "#e0e0e0",
+          cursor: "move",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          transition: "background-color 0.3s ease",
         }}
         onMouseDown={(e) => {
           const startX = e.clientX;
@@ -1842,88 +2055,101 @@ const PaperCanvas = () => {
             const dy = moveEvent.clientY - startY;
             setToolboxPosition({
               x: startLeft + dx,
-              y: startTop + dy
+              y: startTop + dy,
             });
           };
           const onMouseUp = () => {
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
           };
-          document.addEventListener('mousemove', onMouseMove);
-          document.addEventListener('mouseup', onMouseUp);
+          document.addEventListener("mousemove", onMouseMove);
+          document.addEventListener("mouseup", onMouseUp);
         }}
       >
         <span>
-          {toolboxCollapsed ? '🧰' : (
-            currentMode === 'add' 
-              ? <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>Click to place: {pendingStockData?.name}</span>
-              : currentMode === 'connect'
-                ? <span style={{ color: '#2196F3', fontWeight: 'bold' }}>Connect Mode: {connectionStart ? 'Select target stock' : 'Select first stock'}</span>
-                : selectedItem
-                  ? <span style={{ color: '#ff6600', fontWeight: 'bold' }}>Selected: {selectedItem.name}</span>
-                  : 'Stock Toolbox'
+          {toolboxCollapsed ? (
+            "🧰"
+          ) : currentMode === "add" ? (
+            <span style={{ color: "#4CAF50", fontWeight: "bold" }}>
+              Click to place: {pendingStockData?.name}
+            </span>
+          ) : currentMode === "connect" ? (
+            <span style={{ color: "#2196F3", fontWeight: "bold" }}>
+              Connect Mode:{" "}
+              {connectionStart ? "Select target stock" : "Select first stock"}
+            </span>
+          ) : selectedItem ? (
+            <span style={{ color: "#ff6600", fontWeight: "bold" }}>
+              Selected: {selectedItem.name}
+            </span>
+          ) : (
+            "Stock Toolbox"
           )}
-
         </span>
-        <div style={{ display: 'flex', gap: '5px' }}>
-          {currentMode === 'add' && !toolboxCollapsed && (
-            <button 
+        <div style={{ display: "flex", gap: "5px" }}>
+          {currentMode === "add" && !toolboxCollapsed && (
+            <button
               onClick={() => {
-                setCurrentMode('normal');
+                setCurrentMode("normal");
                 setPendingStockData(null);
               }}
               style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '16px',
-                color: '#f44336'
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "16px",
+                color: "#f44336",
               }}
               title="Cancel placement"
             >
               ✖
             </button>
           )}
-          <button 
+          <button
             onClick={() => setToolboxCollapsed(!toolboxCollapsed)}
             style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '16px'
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "16px",
             }}
           >
-            {toolboxCollapsed ? '➕' : '➖'}
+            {toolboxCollapsed ? "➕" : "➖"}
           </button>
         </div>
       </div>
       {/* Toolbox content (copy from your main render) */}
       {!toolboxCollapsed && (
-        <div style={{ padding: '10px' }}>
-          <label htmlFor="mode-select" style={{ fontWeight: 'bold', marginRight: '8px' }}>Mode:</label>
+        <div style={{ padding: "10px" }}>
+          <label
+            htmlFor="mode-select"
+            style={{ fontWeight: "bold", marginRight: "8px" }}
+          >
+            Mode:
+          </label>
           <select
             id="mode-select"
             value={currentMode}
-            onChange={e => {
+            onChange={(e) => {
               setCurrentMode(e.target.value);
               // Reset any pending states when changing modes
-              if (e.target.value !== 'add') {
+              if (e.target.value !== "add") {
                 setPendingStockData(null);
               }
-              if (e.target.value !== 'connect') {
+              if (e.target.value !== "connect") {
                 setConnectionStart(null);
                 if (tempConnectionLine) {
                   tempConnectionLine.remove();
                   setTempConnectionLine(null);
                 }
               }
-              if (e.target.value !== 'edit') {
+              if (e.target.value !== "edit") {
                 setSelectedItem(null);
                 setEditingItem(null);
                 setSelectedBoxId(null);
               }
             }}
-            style={{ marginBottom: '10px', width: '100%' }}
+            style={{ marginBottom: "10px", width: "100%" }}
           >
             <option value="normal">Normal</option>
             <option value="add">Add Stock</option>
@@ -1931,17 +2157,17 @@ const PaperCanvas = () => {
             <option value="edit">Edit</option>
             <option value="simulate">Simulate</option>
           </select>
-          {currentMode === 'add' && (
-            <div style={{ marginTop: '10px' }}>
+          {currentMode === "add" && (
+            <div style={{ marginTop: "10px" }}>
               <select
                 value={newStockShape}
-                onChange={e => {
+                onChange={(e) => {
                   setNewStockShape(e.target.value);
-                  if (e.target.value === 'circle') {
+                  if (e.target.value === "circle") {
                     setNewStockAmount(0); // Reset amount for infinite stocks
                   }
                 }}
-                style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+                style={{ width: "100%", marginBottom: "6px", padding: "4px" }}
               >
                 <option value="rectangle">Rectangle (Finite Stock)</option>
                 <option value="circle">Circle (Infinite Stock)</option>
@@ -1950,119 +2176,228 @@ const PaperCanvas = () => {
                 type="text"
                 placeholder="Stock Name"
                 value={newStockName}
-                onChange={e => setNewStockName(e.target.value)}
-                style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+                onChange={(e) => setNewStockName(e.target.value)}
+                style={{ width: "100%", marginBottom: "6px", padding: "4px" }}
               />
-              {newStockShape === 'rectangle' && (
+              {newStockShape === "rectangle" && (
                 <input
                   type="number"
                   placeholder="Amount"
                   value={newStockAmount}
-                  onChange={e => {
+                  onChange={(e) => {
                     const value = Number(e.target.value);
                     setNewStockAmount(isNaN(value) ? 0 : value);
                   }}
-                  style={{ width: '100%', marginBottom: '6px', padding: '4px' }}
+                  style={{ width: "100%", marginBottom: "6px", padding: "4px" }}
                 />
               )}
-              {newStockShape === 'circle' && (
-                <div style={{ padding: '8px', marginBottom: '6px', backgroundColor: '#e8f5e8', borderRadius: '4px', textAlign: 'center', fontSize: '12px' }}>
+              {newStockShape === "circle" && (
+                <div
+                  style={{
+                    padding: "8px",
+                    marginBottom: "6px",
+                    backgroundColor: "#e8f5e8",
+                    borderRadius: "4px",
+                    textAlign: "center",
+                    fontSize: "12px",
+                  }}
+                >
                   Infinite Stock (∞)
                 </div>
               )}
               <button
-                style={{ width: '100%', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                style={{
+                  width: "100%",
+                  background: "#4CAF50",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "6px",
+                  fontWeight: "bold",
+                }}
                 onClick={() => {
-                  const isValidFinite = newStockShape === 'rectangle' && newStockName && newStockName.trim() !== '';
-                  const isValidInfinite = newStockShape === 'circle' && newStockName && newStockName.trim() !== '';
-                  
+                  const isValidFinite =
+                    newStockShape === "rectangle" &&
+                    newStockName &&
+                    newStockName.trim() !== "";
+                  const isValidInfinite =
+                    newStockShape === "circle" &&
+                    newStockName &&
+                    newStockName.trim() !== "";
+
                   if (isValidFinite || isValidInfinite) {
-                    addBoxWithNameAndAmount(newStockName, newStockAmount, newStockShape);
-                    setNewStockName('');
+                    addBoxWithNameAndAmount(
+                      newStockName,
+                      newStockAmount,
+                      newStockShape
+                    );
+                    setNewStockName("");
                     setNewStockAmount(0);
-                    setNewStockShape('rectangle');
+                    setNewStockShape("rectangle");
                   }
                 }}
-              >Add Stock</button>
+              >
+                Add Stock
+              </button>
             </div>
           )}
-          {currentMode === 'edit' && (
-            <div style={{ marginTop: '10px' }}>
+          {currentMode === "edit" && (
+            <div style={{ marginTop: "10px" }}>
               {/* Edit Mode Info */}
-              <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#f8f9fa', borderRadius: '4px', border: '1px solid #dee2e6' }}>
-                <strong>Edit Mode:</strong> Click on a stock or connection to edit it
+              <div
+                style={{
+                  marginBottom: "10px",
+                  padding: "8px",
+                  backgroundColor: "#f8f9fa",
+                  borderRadius: "4px",
+                  border: "1px solid #dee2e6",
+                }}
+              >
+                <strong>Edit Mode:</strong> Click on a stock or connection to
+                edit it
               </div>
-              {selectedItem && selectedItem.type === 'stock' ? (
+              {selectedItem && selectedItem.type === "stock" ? (
                 <div>
-                  <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffeaa7' }}>
+                  <div
+                    style={{
+                      marginBottom: "10px",
+                      padding: "8px",
+                      backgroundColor: "#fff3cd",
+                      borderRadius: "4px",
+                      border: "1px solid #ffeaa7",
+                    }}
+                  >
                     <strong>Editing: {selectedItem.name}</strong>
                   </div>
-                  <div style={{ marginBottom: '6px' }}>
-                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Stock Name:</label>
+                  <div style={{ marginBottom: "6px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "2px",
+                        fontWeight: "bold",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Stock Name:
+                    </label>
                     <input
                       type="text"
                       placeholder="Enter stock name"
-                      value={editingItem?.name || ''}
-                      onChange={e => setEditingItem({...editingItem, name: e.target.value})}
-                      style={{ width: '70%', padding: '4px' }}
+                      value={editingItem?.name || ""}
+                      onChange={(e) =>
+                        setEditingItem({ ...editingItem, name: e.target.value })
+                      }
+                      style={{ width: "70%", padding: "4px" }}
                     />
                   </div>
-                  <div style={{ marginBottom: '6px' }}>
-                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Amount:</label>
+                  <div style={{ marginBottom: "6px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "2px",
+                        fontWeight: "bold",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Amount:
+                    </label>
                     <input
                       type="number"
                       placeholder="Enter amount"
                       value={editingItem?.amount || 0}
-                      onChange={e => {
+                      onChange={(e) => {
                         const value = Number(e.target.value);
-                        setEditingItem({...editingItem, amount: isNaN(value) ? 0 : value});
+                        setEditingItem({
+                          ...editingItem,
+                          amount: isNaN(value) ? 0 : value,
+                        });
                       }}
-                      style={{ width: '70%', padding: '4px' }}
+                      style={{ width: "70%", padding: "4px" }}
                     />
                   </div>
-                  <div style={{ marginBottom: '6px' }}>
-                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Capacity (0 for infinite):</label>
+                  <div style={{ marginBottom: "6px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "2px",
+                        fontWeight: "bold",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Capacity (0 for infinite):
+                    </label>
                     <input
                       type="number"
                       placeholder="Enter capacity"
                       value={editingItem?.capacity || 0}
-                      onChange={e => {
+                      onChange={(e) => {
                         const value = Number(e.target.value);
-                        setEditingItem({...editingItem, capacity: isNaN(value) ? 0 : value});
+                        setEditingItem({
+                          ...editingItem,
+                          capacity: isNaN(value) ? 0 : value,
+                        });
                       }}
-                      style={{ width: '70%', padding: '4px' }}
+                      style={{ width: "70%", padding: "4px" }}
                     />
                   </div>
-                  <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                  <div
+                    style={{ display: "flex", gap: "5px", marginBottom: "5px" }}
+                  >
                     <button
-                      style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                      style={{
+                        flex: 1,
+                        background: "#007bff",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "6px",
+                        fontWeight: "bold",
+                      }}
                       onClick={() => {
-                        if (editingItem?.name && editingItem?.name.trim() !== '' && 
-                            typeof editingItem?.amount === 'number') {
+                        if (
+                          editingItem?.name &&
+                          editingItem?.name.trim() !== "" &&
+                          typeof editingItem?.amount === "number"
+                        ) {
                           // Update the JSON data
                           const updatedJsonData = {
                             ...jsonData,
-                            boxes: jsonData.boxes.map(box => 
-                              box.id === selectedItem.id 
-                                ? { ...box, name: editingItem.name, amount: editingItem.amount, capacity: editingItem.capacity }
+                            boxes: jsonData.boxes.map((box) =>
+                              box.id === selectedItem.id
+                                ? {
+                                    ...box,
+                                    name: editingItem.name,
+                                    amount: editingItem.amount,
+                                    capacity: editingItem.capacity,
+                                  }
                                 : box
-                            )
+                            ),
                           };
                           setJsonData(updatedJsonData);
-                          setEditorValue(JSON.stringify(updatedJsonData, null, 2));
+                          setEditorValue(
+                            JSON.stringify(updatedJsonData, null, 2)
+                          );
                           // Clear selection after saving
                           setSelectedItem(null);
                           setEditingItem(null);
                           setSelectedBoxId(null);
                         } else {
-                          alert('Please enter a valid stock name and amount.');
+                          alert("Please enter a valid stock name and amount.");
                         }
                       }}
                     >
                       Save
                     </button>
                     <button
-                      style={{ flex: 1, background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                      style={{
+                        flex: 1,
+                        background: "#6c757d",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "6px",
+                        fontWeight: "bold",
+                      }}
                       onClick={() => {
                         setSelectedItem(null);
                         setEditingItem(null);
@@ -2073,17 +2408,37 @@ const PaperCanvas = () => {
                     </button>
                   </div>
                   <button
-                    style={{ width: '100%', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                    style={{
+                      width: "100%",
+                      background: "#f44336",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      padding: "6px",
+                      fontWeight: "bold",
+                    }}
                     onClick={() => {
-                      if (window.confirm(`Remove stock '${selectedItem.name}' and all its connections?`)) {
+                      if (
+                        window.confirm(
+                          `Remove stock '${selectedItem.name}' and all its connections?`
+                        )
+                      ) {
                         // Remove the stock and all its connections
                         const updatedJsonData = {
                           ...jsonData,
-                          boxes: jsonData.boxes.filter(box => box.id !== selectedItem.id),
-                          connections: jsonData.connections.filter(conn => conn.fromStockId !== selectedItem.id && conn.toStockId !== selectedItem.id)
+                          boxes: jsonData.boxes.filter(
+                            (box) => box.id !== selectedItem.id
+                          ),
+                          connections: jsonData.connections.filter(
+                            (conn) =>
+                              conn.fromStockId !== selectedItem.id &&
+                              conn.toStockId !== selectedItem.id
+                          ),
                         };
                         setJsonData(updatedJsonData);
-                        setEditorValue(JSON.stringify(updatedJsonData, null, 2));
+                        setEditorValue(
+                          JSON.stringify(updatedJsonData, null, 2)
+                        );
                         setSelectedItem(null);
                         setEditingItem(null);
                         setSelectedBoxId(null);
@@ -2093,55 +2448,112 @@ const PaperCanvas = () => {
                     Remove Stock
                   </button>
                 </div>
-              ) : selectedItem && selectedItem.type === 'connection' ? (
+              ) : selectedItem && selectedItem.type === "connection" ? (
                 <div>
-                  <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#e7f3ff', borderRadius: '4px', border: '1px solid #b3d9ff' }}>
+                  <div
+                    style={{
+                      marginBottom: "10px",
+                      padding: "8px",
+                      backgroundColor: "#e7f3ff",
+                      borderRadius: "4px",
+                      border: "1px solid #b3d9ff",
+                    }}
+                  >
                     <strong>Editing Connection: {selectedItem.name}</strong>
                   </div>
-                  <div style={{ marginBottom: '6px' }}>
-                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Connection Name:</label>
+                  <div style={{ marginBottom: "6px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "2px",
+                        fontWeight: "bold",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Connection Name:
+                    </label>
                     <input
                       type="text"
                       placeholder="Enter connection name"
-                      value={editingItem?.name || ''}
-                      onChange={e => setEditingItem({...editingItem, name: e.target.value})}
-                      style={{ width: '70%', padding: '4px' }}
+                      value={editingItem?.name || ""}
+                      onChange={(e) =>
+                        setEditingItem({ ...editingItem, name: e.target.value })
+                      }
+                      style={{ width: "70%", padding: "4px" }}
                     />
                   </div>
-                  <div style={{ marginBottom: '6px' }}>
-                    <label style={{ display: 'block', marginBottom: '2px', fontWeight: 'bold', fontSize: '12px' }}>Amount:</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <div style={{ marginBottom: "6px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "2px",
+                        fontWeight: "bold",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Amount:
+                    </label>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "5px",
+                      }}
+                    >
                       <input
                         type="number"
                         placeholder="Amount to transfer"
-                        value={typeof editingItem?.amount === 'string' && editingItem.amount.includes('%') 
-                          ? editingItem.amount.replace('%', '') 
-                          : editingItem?.amount ?? 1}
-                        onChange={e => {
+                        value={
+                          typeof editingItem?.amount === "string" &&
+                          editingItem.amount.includes("%")
+                            ? editingItem.amount.replace("%", "")
+                            : editingItem?.amount ?? 1
+                        }
+                        onChange={(e) => {
                           const value = e.target.value;
-                          const isPercent = document.getElementById('amount-percent-checkbox').checked;
+                          const isPercent = document.getElementById(
+                            "amount-percent-checkbox"
+                          ).checked;
                           const numericValue = Number(value);
-                          const validValue = isNaN(numericValue) ? 0 : numericValue;
-                          const newAmount = isPercent ? `${validValue}%` : validValue;
+                          const validValue = isNaN(numericValue)
+                            ? 0
+                            : numericValue;
+                          const newAmount = isPercent
+                            ? `${validValue}%`
+                            : validValue;
                           setEditingItem({
-                            ...editingItem, 
-                            amount: newAmount
+                            ...editingItem,
+                            amount: newAmount,
                           });
                         }}
-                        style={{ width: '60%', padding: '4px' }}
+                        style={{ width: "60%", padding: "4px" }}
                         min="0"
                         step="0.1"
                       />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "2px",
+                        }}
+                      >
                         <input
                           id="amount-percent-checkbox"
                           type="checkbox"
-                          checked={typeof editingItem?.amount === 'string' && editingItem.amount.includes('%')}
-                          onChange={e => {
+                          checked={
+                            typeof editingItem?.amount === "string" &&
+                            editingItem.amount.includes("%")
+                          }
+                          onChange={(e) => {
                             const isPercent = e.target.checked;
                             let currentValue;
-                            if (typeof editingItem?.amount === 'string' && editingItem.amount.includes('%')) {
-                              const parsed = parseFloat(editingItem.amount.replace('%', ''));
+                            if (
+                              typeof editingItem?.amount === "string" &&
+                              editingItem.amount.includes("%")
+                            ) {
+                              const parsed = parseFloat(
+                                editingItem.amount.replace("%", "")
+                              );
                               currentValue = isNaN(parsed) ? 1 : parsed;
                             } else {
                               const parsed = Number(editingItem?.amount ?? 1);
@@ -2149,104 +2561,158 @@ const PaperCanvas = () => {
                             }
                             setEditingItem({
                               ...editingItem,
-                              amount: isPercent ? `${currentValue}%` : currentValue
+                              amount: isPercent
+                                ? `${currentValue}%`
+                                : currentValue,
                             });
                           }}
                         />
-                        <label htmlFor="amount-percent-checkbox" style={{ fontSize: '12px' }}>%</label>
+                        <label
+                          htmlFor="amount-percent-checkbox"
+                          style={{ fontSize: "12px" }}
+                        >
+                          %
+                        </label>
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                  <div
+                    style={{ display: "flex", gap: "5px", marginBottom: "5px" }}
+                  >
                     <button
-                      style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                      style={{
+                        flex: 1,
+                        background: "#007bff",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "6px",
+                        fontWeight: "bold",
+                      }}
                       onClick={() => {
                         console.log("Connection Save button clicked");
                         console.log("editingItem:", editingItem);
                         console.log("selectedItem:", selectedItem);
-                        console.log("jsonData.connections:", jsonData.connections);
-                        
+                        console.log(
+                          "jsonData.connections:",
+                          jsonData.connections
+                        );
+
                         // Safeguard: ensure editingItem has the right properties with valid values
                         // Now supporting both numeric values and percentage strings
                         const safeEditingItem = {
                           ...editingItem,
                           name: editingItem?.name || "Unnamed Connection",
-                          amount: editingItem?.amount !== undefined && editingItem?.amount !== null && editingItem?.amount !== '' ? 
-                            editingItem.amount : 1
+                          amount:
+                            editingItem?.amount !== undefined &&
+                            editingItem?.amount !== null &&
+                            editingItem?.amount !== ""
+                              ? editingItem.amount
+                              : 1,
                         };
-                        console.log("Safe editing item with defaults:", safeEditingItem);
-                        
+                        console.log(
+                          "Safe editing item with defaults:",
+                          safeEditingItem
+                        );
+
                         // Validate amount (can be number or percentage string)
-                        const isValidAmount = typeof safeEditingItem.amount === 'number' ? 
-                          safeEditingItem.amount >= 0 : 
-                          typeof safeEditingItem.amount === 'string' && 
-                          safeEditingItem.amount.includes('%') && 
-                          parseFloat(safeEditingItem.amount) >= 0;
-                        
-                        if (safeEditingItem.name && safeEditingItem.name.trim() !== '' && 
-                            isValidAmount) {
-                          console.log("Connection validation passed, saving changes...");
-                          
+                        const isValidAmount =
+                          typeof safeEditingItem.amount === "number"
+                            ? safeEditingItem.amount >= 0
+                            : typeof safeEditingItem.amount === "string" &&
+                              safeEditingItem.amount.includes("%") &&
+                              parseFloat(safeEditingItem.amount) >= 0;
+
+                        if (
+                          safeEditingItem.name &&
+                          safeEditingItem.name.trim() !== "" &&
+                          isValidAmount
+                        ) {
+                          console.log(
+                            "Connection validation passed, saving changes..."
+                          );
+
                           // Update the JSON data using the safe values we created
                           const updatedJsonData = {
                             ...jsonData,
-                            connections: jsonData.connections.map(conn => {
-                              console.log("Comparing connection ID:", conn.id, "with selected ID:", selectedItem.id);
+                            connections: jsonData.connections.map((conn) => {
+                              console.log(
+                                "Comparing connection ID:",
+                                conn.id,
+                                "with selected ID:",
+                                selectedItem.id
+                              );
                               if (conn.id === selectedItem.id) {
-                                console.log("Found matching connection to update");
-                                return { 
-                                  ...conn, 
-                                  name: safeEditingItem.name, 
-                                  amount: safeEditingItem.amount
+                                console.log(
+                                  "Found matching connection to update"
+                                );
+                                return {
+                                  ...conn,
+                                  name: safeEditingItem.name,
+                                  amount: safeEditingItem.amount,
                                 };
                               }
                               return conn;
-                            })
+                            }),
                           };
-                          
+
                           console.log("Updated JSON data:", updatedJsonData);
-                          
+
                           // First update the selected item to show changes immediately in the UI
-                          setSelectedItem({ 
-                            ...selectedItem, 
-                            name: safeEditingItem.name, 
-                            amount: safeEditingItem.amount
+                          setSelectedItem({
+                            ...selectedItem,
+                            name: safeEditingItem.name,
+                            amount: safeEditingItem.amount,
                           });
-                          
+
                           // Update the editing item as well with the safe values
-                          setEditingItem({ 
-                            ...editingItem, 
-                            name: safeEditingItem.name, 
-                            amount: safeEditingItem.amount
+                          setEditingItem({
+                            ...editingItem,
+                            name: safeEditingItem.name,
+                            amount: safeEditingItem.amount,
                           });
-                          
+
                           // Then update the JSON data which will trigger both refreshes
                           setJsonData(updatedJsonData);
-                          
+
                           // Manually trigger the editor update for immediate feedback
-                          setEditorValue(JSON.stringify(updatedJsonData, null, 2));
-                          
+                          setEditorValue(
+                            JSON.stringify(updatedJsonData, null, 2)
+                          );
+
                           // Immediately update the connection label to reflect the new values
-                          console.log("Refreshing connections to update visuals");
+                          console.log(
+                            "Refreshing connections to update visuals"
+                          );
                           refreshConnections(updatedJsonData);
-                          
+
                           // Clear selection after saving
                           setSelectedItem(null);
                           console.log("Connection saved successfully");
                         } else {
                           console.error("Validation failed:", {
                             name: safeEditingItem.name,
-                            
-                            transferAmount: safeEditingItem.transferAmount
+
+                            transferAmount: safeEditingItem.transferAmount,
                           });
-                          alert('Please fill in all fields with valid values before saving. Values must be valid numbers.');
+                          alert(
+                            "Please fill in all fields with valid values before saving. Values must be valid numbers."
+                          );
                         }
                       }}
                     >
                       Save
                     </button>
                     <button
-                      style={{ flex: 1, background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                      style={{
+                        flex: 1,
+                        background: "#6c757d",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "6px",
+                        fontWeight: "bold",
+                      }}
                       onClick={() => {
                         setSelectedItem(null);
                         setEditingItem(null);
@@ -2256,16 +2722,32 @@ const PaperCanvas = () => {
                     </button>
                   </div>
                   <button
-                    style={{ width: '100%', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontWeight: 'bold' }}
+                    style={{
+                      width: "100%",
+                      background: "#f44336",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      padding: "6px",
+                      fontWeight: "bold",
+                    }}
                     onClick={() => {
-                      if (window.confirm(`Remove connection '${selectedItem.name}'?`)) {
+                      if (
+                        window.confirm(
+                          `Remove connection '${selectedItem.name}'?`
+                        )
+                      ) {
                         // Remove the connection
                         const updatedJsonData = {
                           ...jsonData,
-                          connections: jsonData.connections.filter(conn => conn.id !== selectedItem.id)
+                          connections: jsonData.connections.filter(
+                            (conn) => conn.id !== selectedItem.id
+                          ),
                         };
                         setJsonData(updatedJsonData);
-                        setEditorValue(JSON.stringify(updatedJsonData, null, 2));
+                        setEditorValue(
+                          JSON.stringify(updatedJsonData, null, 2)
+                        );
                         setSelectedItem(null);
                         setEditingItem(null);
                         // Refresh visual connections to remove the deleted connection
@@ -2277,40 +2759,87 @@ const PaperCanvas = () => {
                   </button>
                 </div>
               ) : (
-                <div style={{ padding: '10px', textAlign: 'center', color: '#6c757d' }}>
+                <div
+                  style={{
+                    padding: "10px",
+                    textAlign: "center",
+                    color: "#6c757d",
+                  }}
+                >
                   Click on a connection to edit it
                 </div>
               )}
             </div>
           )}
-          {currentMode === 'simulate' && (
-            <div style={{ marginTop: '10px' }}>
-              <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#f0f8ff', borderRadius: '4px', border: '1px solid #b3d9ff' }}>
+          {currentMode === "simulate" && (
+            <div style={{ marginTop: "10px" }}>
+              <div
+                style={{
+                  marginBottom: "10px",
+                  padding: "8px",
+                  backgroundColor: "#f0f8ff",
+                  borderRadius: "4px",
+                  border: "1px solid #b3d9ff",
+                }}
+              >
                 <strong>Simulation Mode</strong>
               </div>
-              
+
               {/* Step Counter Display */}
-              <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#e8f5e8', borderRadius: '4px', border: '1px solid #c3e6c3', textAlign: 'center' }}>
+              <div
+                style={{
+                  marginBottom: "10px",
+                  padding: "8px",
+                  backgroundColor: "#e8f5e8",
+                  borderRadius: "4px",
+                  border: "1px solid #c3e6c3",
+                  textAlign: "center",
+                }}
+              >
                 <strong>Steps Completed: {simulationSteps}</strong>
               </div>
-              
+
               {/* Target Steps Input */}
-              <div style={{ marginBottom: '10px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold', fontSize: '12px' }}>Target Steps:</label>
+              <div style={{ marginBottom: "10px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "4px",
+                    fontWeight: "bold",
+                    fontSize: "12px",
+                  }}
+                >
+                  Target Steps:
+                </label>
                 <input
                   type="number"
                   min="1"
                   max="100"
                   value={targetSteps}
-                  onChange={e => setTargetSteps(Math.max(1, Math.min(100, Number(e.target.value))))}
-                  style={{ width: '100%', padding: '4px', marginBottom: '6px' }}
+                  onChange={(e) =>
+                    setTargetSteps(
+                      Math.max(1, Math.min(100, Number(e.target.value)))
+                    )
+                  }
+                  style={{ width: "100%", padding: "4px", marginBottom: "6px" }}
                 />
               </div>
-              
+
               {/* Simulation Buttons */}
-              <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
+              <div
+                style={{ display: "flex", gap: "5px", marginBottom: "10px" }}
+              >
                 <button
-                  style={{ flex: 1, background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
+                  style={{
+                    flex: 1,
+                    background: "#28a745",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    padding: "8px",
+                    fontWeight: "bold",
+                    fontSize: "12px",
+                  }}
                   onClick={() => {
                     runSimulation();
                   }}
@@ -2319,7 +2848,16 @@ const PaperCanvas = () => {
                 </button>
 
                 <button
-                  style={{ flex: 1, background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
+                  style={{
+                    flex: 1,
+                    background: "#007bff",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    padding: "8px",
+                    fontWeight: "bold",
+                    fontSize: "12px",
+                  }}
                   onClick={() => {
                     runMultipleSteps();
                   }}
@@ -2327,38 +2865,83 @@ const PaperCanvas = () => {
                   Run {targetSteps} Steps
                 </button>
               </div>
-              
+
               <button
-                style={{ width: '100%', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
+                style={{
+                  width: "100%",
+                  background: "#6c757d",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "8px",
+                  fontWeight: "bold",
+                  fontSize: "12px",
+                }}
                 onClick={() => {
                   resetSimulation();
                 }}
               >
                 Reset Counter
               </button>
-              
 
               {/* Plot Controls */}
               {simulationHistory.length > 0 && (
-                <div style={{ marginTop: '10px', padding: '8px', backgroundColor: '#f8f9fa', borderRadius: '4px', border: '1px solid #dee2e6' }}>
-                  <div style={{ marginBottom: '8px' }}>
-                    <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold', fontSize: '12px' }}>Select Stock to Plot:</label>
+                <div
+                  style={{
+                    marginTop: "10px",
+                    padding: "8px",
+                    backgroundColor: "#f8f9fa",
+                    borderRadius: "4px",
+                    border: "1px solid #dee2e6",
+                  }}
+                >
+                  <div style={{ marginBottom: "8px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "4px",
+                        fontWeight: "bold",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Select Stock to Plot:
+                    </label>
                     <select
                       value={selectedStockForPlot}
-                      onChange={e => {
-                        console.log('Selected stock ID from dropdown:', e.target.value);
+                      onChange={(e) => {
+                        console.log(
+                          "Selected stock ID from dropdown:",
+                          e.target.value
+                        );
                         setSelectedStockForPlot(e.target.value);
                       }}
-                      style={{ width: '100%', padding: '4px', marginBottom: '6px' }}
+                      style={{
+                        width: "100%",
+                        padding: "4px",
+                        marginBottom: "6px",
+                      }}
                     >
                       <option value="">Choose a stock...</option>
-                      {jsonData.boxes.filter(box => box.name && box.shape !== 'circle').map(box => (
-                        <option key={box.id} value={String(box.id)}>{box.name}</option>
-                      ))}
+                      {jsonData.boxes
+                        .filter((box) => box.name && box.shape !== "circle")
+                        .map((box) => (
+                          <option key={box.id} value={String(box.id)}>
+                            {box.name}
+                          </option>
+                        ))}
                     </select>
                   </div>
                   <button
-                    style={{ width: '100%', background: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', padding: '8px', fontWeight: 'bold', fontSize: '12px' }}
+                    style={{
+                      width: "100%",
+                      background: "#17a2b8",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      padding: "8px",
+                      fontWeight: "bold",
+                      fontSize: "12px",
+                    }}
                     onClick={() => setShowPlotPanel(true)}
                     disabled={!selectedStockForPlot}
                   >
@@ -2366,8 +2949,15 @@ const PaperCanvas = () => {
                   </button>
                 </div>
               )}
-              
-              <div style={{ fontSize: '11px', color: '#6c757d', textAlign: 'center', marginTop: '8px' }}>
+
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#6c757d",
+                  textAlign: "center",
+                  marginTop: "8px",
+                }}
+              >
                 Set target steps (1-100) and run simulation
               </div>
             </div>
@@ -2378,7 +2968,18 @@ const PaperCanvas = () => {
   );
 
   return (
-    <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden', position: 'fixed', top: 0, left: 0 }}>
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        margin: 0,
+        padding: 0,
+        overflow: "hidden",
+        position: "fixed",
+        top: 0,
+        left: 0,
+      }}
+    >
       {/* Robust style for SplitPane resizer cursor and pointer events */}
       <style>{`
         /* React Resizable Panels styles */
@@ -2443,233 +3044,294 @@ const PaperCanvas = () => {
       `}</style>
       <PanelGroup
         direction="horizontal"
-        style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh' }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100vw",
+          height: "100vh",
+        }}
       >
         <Panel defaultSize={jsonEditorVisible ? 70 : 100} minSize={30}>
-          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-          <canvas
-            ref={canvasRef}
-            id="myCanvas"
-            resize="true"
-            className={currentMode === 'add' ? 'stock-placement-cursor' : ''}
-            style={{ 
-              display: 'block', 
-              width: '100%', 
-              height: '100%',
-              cursor: currentMode === 'add' ? 'crosshair' : currentMode === 'connect' ? 'crosshair' : 'default'
-            }}
-            onMouseMove={(e) => {
-              if (currentMode === 'connect' && connectionStart && paper.project) {
-                const rect = e.target.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                // Remove existing temp line
-                if (tempConnectionLine) {
-                  tempConnectionLine.remove();
-                }
-                // Find the starting stock position
-                const startStock = boxes.find(box => box.stockId === connectionStart);
-                if (startStock) {
-                  const tempLine = new paper.Path.Line(
-                    startStock.position,
-                    new paper.Point(x, y)
-                  );
-                  tempLine.strokeColor = 'red';
-                  tempLine.strokeWidth = 2;
-                  tempLine.dashArray = [5, 5];
-                  setTempConnectionLine(tempLine);
-                  if (paper.view) paper.view.draw();
-                }
-              }
-            }}
-            onClick={(e) => {
-              if (currentMode === 'add' && pendingStockData) {
-                // Get canvas-relative coordinates
-                const rect = e.target.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                placeStockAtPosition(x, y);
-              } else if (currentMode === 'connect') {
-                // Get canvas-relative coordinates for hit testing
-                const rect = e.target.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const point = new paper.Point(x, y);
-                
-                // Use Paper.js hit testing to find clicked stock
-                const hitResult = paper.project.hitTest(point);
-                
-                if (hitResult && hitResult.item) {
-                  console.log('Hit test result:', hitResult.item);
-                  
-                  // Try to find a stock by checking all boxes
-                  const clickedPoint = new paper.Point(x, y);
-                  console.log('Click coordinates:', x, y);
-                  let foundStock = null;
-                  
-                  // Check if the click is within any stock box bounds
-                  for (const box of paperState.current.boxes) {
-                    console.log('Checking box', box.stockId, 'bounds:', box.bounds.toString(), 'contains click:', box.bounds.contains(clickedPoint));
-                    if (box.bounds.contains(clickedPoint)) {
-                      console.log('Found box containing click point:', box.stockId);
-                      foundStock = box;
-                      break;
-                    }
+          <div style={{ width: "100%", height: "100%", position: "relative" }}>
+            <canvas
+              ref={canvasRef}
+              id="myCanvas"
+              resize="true"
+              className={currentMode === "add" ? "stock-placement-cursor" : ""}
+              style={{
+                display: "block",
+                width: "100%",
+                height: "100%",
+                cursor:
+                  currentMode === "add"
+                    ? "crosshair"
+                    : currentMode === "connect"
+                    ? "crosshair"
+                    : "default",
+              }}
+              onMouseMove={(e) => {
+                if (
+                  currentMode === "connect" &&
+                  connectionStart &&
+                  paper.project
+                ) {
+                  const rect = e.target.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const y = e.clientY - rect.top;
+                  // Remove existing temp line
+                  if (tempConnectionLine) {
+                    tempConnectionLine.remove();
                   }
-                  
-                  if (foundStock) {
-                    console.log('Found stock with ID:', foundStock.stockId);
-                    // Found a stock, handle connection logic
-                    handleConnectionClick(foundStock.stockId);
-                  } else {
-                    // Try the original parent traversal method as fallback
-                    let stockGroup = hitResult.item;
-                    console.log('Starting parent traversal from:', stockGroup);
-                    
-                    // First try to find by stockId
-                    while (stockGroup && !stockGroup.stockId) {
-                      console.log('Traversing parent:', stockGroup.parent);
-                      stockGroup = stockGroup.parent;
+                  // Find the starting stock position
+                  const startStock = boxes.find(
+                    (box) => box.stockId === connectionStart
+                  );
+                  if (startStock) {
+                    const tempLine = new paper.Path.Line(
+                      startStock.position,
+                      new paper.Point(x, y)
+                    );
+                    tempLine.strokeColor = "red";
+                    tempLine.strokeWidth = 2;
+                    tempLine.dashArray = [5, 5];
+                    setTempConnectionLine(tempLine);
+                    if (paper.view) paper.view.draw();
+                  }
+                }
+              }}
+              onClick={(e) => {
+                if (currentMode === "add" && pendingStockData) {
+                  // Get canvas-relative coordinates
+                  const rect = e.target.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const y = e.clientY - rect.top;
+                  placeStockAtPosition(x, y);
+                } else if (currentMode === "connect") {
+                  // Get canvas-relative coordinates for hit testing
+                  const rect = e.target.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const y = e.clientY - rect.top;
+                  const point = new paper.Point(x, y);
+
+                  // Use Paper.js hit testing to find clicked stock
+                  const hitResult = paper.project.hitTest(point);
+
+                  if (hitResult && hitResult.item) {
+                    console.log("Hit test result:", hitResult.item);
+
+                    // Try to find a stock by checking all boxes
+                    const clickedPoint = new paper.Point(x, y);
+                    console.log("Click coordinates:", x, y);
+                    let foundStock = null;
+
+                    // Check if the click is within any stock box bounds
+                    for (const box of paperState.current.boxes) {
+                      console.log(
+                        "Checking box",
+                        box.stockId,
+                        "bounds:",
+                        box.bounds.toString(),
+                        "contains click:",
+                        box.bounds.contains(clickedPoint)
+                      );
+                      if (box.bounds.contains(clickedPoint)) {
+                        console.log(
+                          "Found box containing click point:",
+                          box.stockId
+                        );
+                        foundStock = box;
+                        break;
+                      }
                     }
-                    
-                    if (stockGroup && stockGroup.stockId) {
-                      console.log('Found stock with ID (via parent traversal):', stockGroup.stockId);
+
+                    if (foundStock) {
+                      console.log("Found stock with ID:", foundStock.stockId);
                       // Found a stock, handle connection logic
-                      handleConnectionClick(stockGroup.stockId);
+                      handleConnectionClick(foundStock.stockId);
                     } else {
-                      // If stockId not found, try to find by checking all boxes
-                      console.log('No stockId found, checking all boxes');
-                      let foundBox = null;
-                      
-                      for (const box of paperState.current.boxes) {
-                        // Check if the hit result item is a child of this box
-                        let isChild = false;
-                        let currentItem = hitResult.item;
-                        
-                        while (currentItem && !isChild) {
-                          if (currentItem === box || currentItem.parent === box) {
-                            isChild = true;
+                      // Try the original parent traversal method as fallback
+                      let stockGroup = hitResult.item;
+                      console.log(
+                        "Starting parent traversal from:",
+                        stockGroup
+                      );
+
+                      // First try to find by stockId
+                      while (stockGroup && !stockGroup.stockId) {
+                        console.log("Traversing parent:", stockGroup.parent);
+                        stockGroup = stockGroup.parent;
+                      }
+
+                      if (stockGroup && stockGroup.stockId) {
+                        console.log(
+                          "Found stock with ID (via parent traversal):",
+                          stockGroup.stockId
+                        );
+                        // Found a stock, handle connection logic
+                        handleConnectionClick(stockGroup.stockId);
+                      } else {
+                        // If stockId not found, try to find by checking all boxes
+                        console.log("No stockId found, checking all boxes");
+                        let foundBox = null;
+
+                        for (const box of paperState.current.boxes) {
+                          // Check if the hit result item is a child of this box
+                          let isChild = false;
+                          let currentItem = hitResult.item;
+
+                          while (currentItem && !isChild) {
+                            if (
+                              currentItem === box ||
+                              currentItem.parent === box
+                            ) {
+                              isChild = true;
+                              break;
+                            }
+                            currentItem = currentItem.parent;
+                          }
+
+                          if (isChild) {
+                            console.log(
+                              "Found box containing hit item:",
+                              box.stockId
+                            );
+                            foundBox = box;
                             break;
                           }
-                          currentItem = currentItem.parent;
                         }
-                        
-                        if (isChild) {
-                          console.log('Found box containing hit item:', box.stockId);
-                          foundBox = box;
-                          break;
-                        }
-                      }
-                      
-                      if (foundBox) {
-                        console.log('Found stock with ID (via box search):', foundBox.stockId);
-                        handleConnectionClick(foundBox.stockId);
-                      } else {
-                        console.log('No stock group found, canceling connection');
-                        // Clicked on empty space or non-stock item, cancel connection
-                        if (connectionStart) {
-                          cancelConnectionTool();
+
+                        if (foundBox) {
+                          console.log(
+                            "Found stock with ID (via box search):",
+                            foundBox.stockId
+                          );
+                          handleConnectionClick(foundBox.stockId);
+                        } else {
+                          console.log(
+                            "No stock group found, canceling connection"
+                          );
+                          // Clicked on empty space or non-stock item, cancel connection
+                          if (connectionStart) {
+                            cancelConnectionTool();
+                          }
                         }
                       }
                     }
+                  } else {
+                    console.log("No hit result, canceling connection");
+                    // Clicked on empty space, cancel connection
+                    if (connectionStart) {
+                      cancelConnectionTool();
+                    }
                   }
+                  return;
                 } else {
-                  console.log('No hit result, canceling connection');
-                  // Clicked on empty space, cancel connection
-                  if (connectionStart) {
-                    cancelConnectionTool();
+                  // Get canvas-relative coordinates for hit testing
+                  const rect = e.target.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const y = e.clientY - rect.top;
+                  const point = new paper.Point(x, y);
+                  // Use Paper.js hit testing to check if we clicked on any item
+                  const hitResult = paper.project.hitTest(point);
+                  // If no item was hit, or only axes were hit, clear selection
+                  if (
+                    !hitResult ||
+                    (hitResult.item && hitResult.item.name === "axis")
+                  ) {
+                    setSelectedItem(null);
+                    setEditingItem(null);
                   }
                 }
-                return;
-              } else {
-                // Get canvas-relative coordinates for hit testing
-                const rect = e.target.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const point = new paper.Point(x, y);
-                // Use Paper.js hit testing to check if we clicked on any item
-                const hitResult = paper.project.hitTest(point);
-                // If no item was hit, or only axes were hit, clear selection
-                if (!hitResult || (hitResult.item && hitResult.item.name === 'axis')) {
-                  setSelectedItem(null);
-                  setEditingItem(null);
-                }
-              }
-            }}
-          />
-          {renderToolbox()}
+              }}
+            />
+            {renderToolbox()}
           </div>
         </Panel>
         {jsonEditorVisible && (
           <>
-            <PanelResizeHandle 
+            <PanelResizeHandle
               style={{
-                width: '4px',
-                minWidth: '4px',
-                maxWidth: '4px',
-                cursor: 'col-resize',
-                backgroundColor: '#e0e0e0',
-                border: '1px solid #ccc',
-                transition: 'all 0.2s ease',
-                pointerEvents: 'auto'
+                width: "4px",
+                minWidth: "4px",
+                maxWidth: "4px",
+                cursor: "col-resize",
+                backgroundColor: "#e0e0e0",
+                border: "1px solid #ccc",
+                transition: "all 0.2s ease",
+                pointerEvents: "auto",
               }}
             />
             <Panel defaultSize={30} minSize={20}>
-              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', zIndex: 2 }}>
-            <Editor
-              height="100%"
-              language="json"
-              value={editorValue}
-              onMount={(editor) => {
-                editorRef.current = editor;
-              }}
-              onChange={(value) => {
-                setEditorValue(value);
-                try {
-                  const parsedValue = JSON.parse(value);
-                  
-                  // Ensure connections have amount property
-                  if (parsedValue.connections) {
-                    parsedValue.connections = parsedValue.connections.map(conn => {
-                      // Preserve string format for percentage values
-                      let amount = conn.amount !== undefined ? conn.amount : 1;
-                      
-                      // If the value is a string and contains '%', keep it as a string
-                      // Otherwise, ensure it's a number
-                      if (typeof amount === 'string') {
-                        if (!amount.includes('%')) {
-                          amount = Number(amount);
-                        }
-                      } else if (typeof amount === 'number') {
-                        // Already a number, no conversion needed
-                      } else if (amount !== undefined) {
-                        // Convert other types to number
-                        amount = Number(amount);
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  background: "#fff",
+                  zIndex: 2,
+                }}
+              >
+                <Editor
+                  height="100%"
+                  language="json"
+                  value={editorValue}
+                  onMount={(editor) => {
+                    editorRef.current = editor;
+                  }}
+                  onChange={(value) => {
+                    setEditorValue(value);
+                    try {
+                      const parsedValue = JSON.parse(value);
+
+                      // Ensure connections have amount property
+                      if (parsedValue.connections) {
+                        parsedValue.connections = parsedValue.connections.map(
+                          (conn) => {
+                            // Preserve string format for percentage values
+                            let amount =
+                              conn.amount !== undefined ? conn.amount : 1;
+
+                            // If the value is a string and contains '%', keep it as a string
+                            // Otherwise, ensure it's a number
+                            if (typeof amount === "string") {
+                              if (!amount.includes("%")) {
+                                amount = Number(amount);
+                              }
+                            } else if (typeof amount === "number") {
+                              // Already a number, no conversion needed
+                            } else if (amount !== undefined) {
+                              // Convert other types to number
+                              amount = Number(amount);
+                            }
+
+                            return {
+                              ...conn,
+                              amount: amount,
+                            };
+                          }
+                        );
                       }
-                      
-                      return {
-                        ...conn,
-                        amount: amount
-                      };
-                    });
-                  }
-                  
-                  const dataWithSimulation = ensureSimulationAmount(parsedValue);
-                  setJsonData(dataWithSimulation);
-                } catch (error) {
-                  // Don't update if JSON is invalid
-                  console.error('Invalid JSON:', error);
-                }
-              }}
-              options={{
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 14,
-                automaticLayout: true,
-                formatOnPaste: true,
-                formatOnType: true
-              }}            />
-            </div>
+
+                      const dataWithSimulation =
+                        ensureSimulationAmount(parsedValue);
+                      setJsonData(dataWithSimulation);
+                    } catch (error) {
+                      // Don't update if JSON is invalid
+                      console.error("Invalid JSON:", error);
+                    }
+                  }}
+                  options={{
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    fontSize: 14,
+                    automaticLayout: true,
+                    formatOnPaste: true,
+                    formatOnType: true,
+                  }}
+                />
+              </div>
             </Panel>
           </>
         )}
@@ -2678,143 +3340,157 @@ const PaperCanvas = () => {
       <button
         onClick={() => {
           if (jsonEditorVisible) {
-            setSplitSize('100vw');
+            setSplitSize("100vw");
           } else {
             setSplitSize(window.innerWidth * 0.75);
           }
-          setJsonEditorVisible(prev => !prev);
+          setJsonEditorVisible((prev) => !prev);
         }}
         style={{
-          position: 'fixed',
-          bottom: '20px',
-          right: '20px',
+          position: "fixed",
+          bottom: "20px",
+          right: "20px",
           zIndex: 1000,
-          padding: '10px 15px',
-          backgroundColor: jsonEditorVisible ? '#ff6600' : '#4CAF50',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: 'pointer',
-          fontSize: '14px',
-          fontWeight: 'bold',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          padding: "10px 15px",
+          backgroundColor: jsonEditorVisible ? "#ff6600" : "#4CAF50",
+          color: "white",
+          border: "none",
+          borderRadius: "4px",
+          cursor: "pointer",
+          fontSize: "14px",
+          fontWeight: "bold",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
         }}
-        title={jsonEditorVisible ? 'Hide JSON Editor' : 'Show JSON Editor'}
+        title={jsonEditorVisible ? "Hide JSON Editor" : "Show JSON Editor"}
       >
-        {jsonEditorVisible ? '📝 Hide Editor' : '📝 Show Editor'}
+        {jsonEditorVisible ? "📝 Hide Editor" : "📝 Show Editor"}
       </button>
-      
+
       {/* Canvas Selection Dropdown */}
-      <div style={{
-        position: 'fixed',
-        bottom: '20px',
-        left: '20px',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px'
-      }}>
-        <label style={{
-          color: '#333',
-          fontSize: '14px',
-          fontWeight: 'bold'
-        }}>Canvas:</label>
+      <div
+        style={{
+          position: "fixed",
+          bottom: "20px",
+          left: "20px",
+          zIndex: 1000,
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+        }}
+      >
+        <label
+          style={{
+            color: "#333",
+            fontSize: "14px",
+            fontWeight: "bold",
+          }}
+        >
+          Canvas:
+        </label>
         <select
           value={currentCanvasName}
           onChange={(e) => handleCanvasSelection(e.target.value)}
           style={{
-            padding: '8px 12px',
-            fontSize: '14px',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            backgroundColor: 'white',
-            cursor: 'pointer',
-            minWidth: '150px'
+            padding: "8px 12px",
+            fontSize: "14px",
+            border: "1px solid #ccc",
+            borderRadius: "4px",
+            backgroundColor: "white",
+            cursor: "pointer",
+            minWidth: "150px",
           }}
         >
-          {availableCanvases.map(name => (
-            <option key={name} value={name}>{name}</option>
+          {availableCanvases.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
           ))}
           <option value="new_canvas">+ New Canvas</option>
         </select>
         <button
           onClick={() => saveCurrentCanvas()}
           style={{
-            padding: '8px 12px',
-            backgroundColor: '#2196F3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold'
+            padding: "8px 12px",
+            backgroundColor: "#2196F3",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "bold",
           }}
           title="Save current canvas"
         >
           💾 Save
         </button>
       </div>
-      
+
       {/* New Canvas Dialog */}
       {showNewCanvasDialog && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            padding: '20px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-            minWidth: '300px'
-          }}>
-            <h3 style={{ margin: '0 0 15px 0' }}>Create New Canvas</h3>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              padding: "20px",
+              borderRadius: "8px",
+              boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+              minWidth: "300px",
+            }}
+          >
+            <h3 style={{ margin: "0 0 15px 0" }}>Create New Canvas</h3>
             <input
               type="text"
               placeholder="Enter canvas name"
               value={newCanvasName}
               onChange={(e) => setNewCanvasName(e.target.value)}
               onKeyPress={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === "Enter") {
                   createNewCanvas(newCanvasName);
                 }
               }}
               style={{
-                width: '100%',
-                padding: '10px',
-                fontSize: '14px',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                marginBottom: '15px',
-                boxSizing: 'border-box'
+                width: "100%",
+                padding: "10px",
+                fontSize: "14px",
+                border: "1px solid #ccc",
+                borderRadius: "4px",
+                marginBottom: "15px",
+                boxSizing: "border-box",
               }}
               autoFocus
             />
-            <div style={{
-              display: 'flex',
-              gap: '10px',
-              justifyContent: 'flex-end'
-            }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                justifyContent: "flex-end",
+              }}
+            >
               <button
                 onClick={() => {
                   setShowNewCanvasDialog(false);
-                  setNewCanvasName('');
+                  setNewCanvasName("");
                 }}
                 style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#ccc',
-                  color: '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
+                  padding: "8px 16px",
+                  backgroundColor: "#ccc",
+                  color: "#333",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
                 }}
               >
                 Cancel
@@ -2822,12 +3498,12 @@ const PaperCanvas = () => {
               <button
                 onClick={() => createNewCanvas(newCanvasName)}
                 style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#4CAF50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
+                  padding: "8px 16px",
+                  backgroundColor: "#4CAF50",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
                 }}
               >
                 Create
@@ -2836,51 +3512,60 @@ const PaperCanvas = () => {
           </div>
         </div>
       )}
-      
+
       {/* Plot Panel */}
       {showPlotPanel && selectedStockForPlot && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            padding: '20px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-            width: '80%',
-            maxWidth: '800px',
-            height: '80%',
-            maxHeight: '600px',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '20px'
-            }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              padding: "20px",
+              borderRadius: "8px",
+              boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+              width: "80%",
+              maxWidth: "800px",
+              height: "80%",
+              maxHeight: "600px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+              }}
+            >
               <h3 style={{ margin: 0 }}>
-                 Stock Amount Over Time: {jsonData.boxes.find(box => String(box.id) === selectedStockForPlot)?.name || 'Unknown'}
-               </h3>
+                Stock Amount Over Time:{" "}
+                {jsonData.boxes.find(
+                  (box) => String(box.id) === selectedStockForPlot
+                )?.name || "Unknown"}
+              </h3>
               <button
                 onClick={() => setShowPlotPanel(false)}
                 style={{
-                  padding: '8px 12px',
-                  backgroundColor: '#dc3545',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
+                  padding: "8px 12px",
+                  backgroundColor: "#dc3545",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
                 }}
               >
                 Close
@@ -2889,33 +3574,49 @@ const PaperCanvas = () => {
             <div style={{ flex: 1, minHeight: 0 }}>
               <Line
                 data={{
-                  labels: simulationHistory.map(step => `Step ${step.step}`),
-                  datasets: [{
-                    label: 'Simulation Amount',
-                    data: simulationHistory.map(step => {
-                      // Enhanced debug logging with type information
-                      console.log(`Looking for stock ${selectedStockForPlot} (type: ${typeof selectedStockForPlot}) in step ${step.step}`, {
-                        availableStocks: step.stocks.map(s => `${s.id} (type: ${typeof s.id})`),
-                        selectedStockForPlot,
-                        stocksRaw: step.stocks
-                      });
-                      
-                      // Try both string and number comparison since HTML select values are strings
-                      const stock = step.stocks.find(s => 
-                        s.id === selectedStockForPlot || // Exact match
-                        String(s.id) === String(selectedStockForPlot) // String conversion match
-                      );
-                      
-                      console.log(stock ? 
-                        `Found stock ${stock.name} with amount ${stock.simulationAmount}` : 
-                        `Stock not found for ID ${selectedStockForPlot}`);
-                        
-                      return stock ? Number(parseFloat(stock.simulationAmount).toFixed(3)) : 0;
-                    }),
-                    borderColor: 'rgb(75, 192, 192)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    tension: 0.1
-                  }]
+                  labels: simulationHistory.map((step) => `Step ${step.step}`),
+                  datasets: [
+                    {
+                      label: "Simulation Amount",
+                      data: simulationHistory.map((step) => {
+                        // Enhanced debug logging with type information
+                        console.log(
+                          `Looking for stock ${selectedStockForPlot} (type: ${typeof selectedStockForPlot}) in step ${
+                            step.step
+                          }`,
+                          {
+                            availableStocks: step.stocks.map(
+                              (s) => `${s.id} (type: ${typeof s.id})`
+                            ),
+                            selectedStockForPlot,
+                            stocksRaw: step.stocks,
+                          }
+                        );
+
+                        // Try both string and number comparison since HTML select values are strings
+                        const stock = step.stocks.find(
+                          (s) =>
+                            s.id === selectedStockForPlot || // Exact match
+                            String(s.id) === String(selectedStockForPlot) // String conversion match
+                        );
+
+                        console.log(
+                          stock
+                            ? `Found stock ${stock.name} with amount ${stock.simulationAmount}`
+                            : `Stock not found for ID ${selectedStockForPlot}`
+                        );
+
+                        return stock
+                          ? Number(
+                              parseFloat(stock.simulationAmount).toFixed(3)
+                            )
+                          : 0;
+                      }),
+                      borderColor: "rgb(75, 192, 192)",
+                      backgroundColor: "rgba(75, 192, 192, 0.2)",
+                      tension: 0.1,
+                    },
+                  ],
                 }}
                 options={{
                   responsive: true,
@@ -2923,28 +3624,28 @@ const PaperCanvas = () => {
                   plugins: {
                     title: {
                       display: true,
-                      text: 'Stock Amount vs Simulation Steps'
+                      text: "Stock Amount vs Simulation Steps",
                     },
                     legend: {
-                      display: true
-                    }
+                      display: true,
+                    },
                   },
                   scales: {
                     x: {
                       display: true,
                       title: {
                         display: true,
-                        text: 'Simulation Steps'
-                      }
+                        text: "Simulation Steps",
+                      },
                     },
                     y: {
                       display: true,
                       title: {
                         display: true,
-                        text: 'Amount'
-                      }
-                    }
-                  }
+                        text: "Amount",
+                      },
+                    },
+                  },
                 }}
               />
             </div>

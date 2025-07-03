@@ -3827,6 +3827,36 @@ const PaperCanvas = () => {
         >
           💾 Save
         </button>
+        <button
+          onClick={async () => {
+            if (currentCanvasName === "default") {
+              alert("The default canvas cannot be deleted.");
+              return;
+            }
+            if (window.confirm(`Are you sure you want to delete canvas '${currentCanvasName}'?`)) {
+              await dbService.deleteCanvas(currentCanvasName);
+              setAvailableCanvases((prev) => prev.filter((n) => n !== currentCanvasName));
+              // If the deleted canvas was active, switch to default
+              if (currentCanvasName !== "default") {
+                setCurrentCanvasName("default");
+                loadCanvas("default");
+              }
+            }
+          }}
+          style={{
+            padding: "8px 12px",
+            backgroundColor: "#f44336",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "bold",
+          }}
+          title="Delete current canvas"
+        >
+          🗑️ Delete
+        </button>
       </div>
 
       {/* New Canvas Dialog */}

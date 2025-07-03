@@ -175,6 +175,15 @@ const PaperCanvas = () => {
   const [selectedStocksForSum, setSelectedStocksForSum] = useState([]); // For multiple stock selection
   const [plotMode, setPlotMode] = useState("single"); // "single" or "sum"
 
+  // Mode system - only one mode can be active at a time
+  const [currentMode, setCurrentMode] = useState("normal"); // 'normal', 'add', 'edit', 'connect'
+  const [pendingStockData, setPendingStockData] = useState(null);
+  const [connectionStart, setConnectionStart] = useState(null);
+  const [tempConnectionLine, setTempConnectionLine] = useState(null);
+  
+  // Edit mode filter toggle
+  const [editModeFilterEnabled, setEditModeFilterEnabled] = useState(false); // toggle for filtering in edit mode
+
   const paperState = useRef({
     boxes: [],
     connections: [],
@@ -734,8 +743,18 @@ const PaperCanvas = () => {
     const newBoxes = [];
     const newConnections = [];
 
+    // Apply filter if edit mode filter is enabled
+    let visibleElements = { stocks: new Set(), connections: new Set() };
+    if (currentMode === "edit" && editModeFilterEnabled && selectedItem) {
+      visibleElements = getConnectedElements(selectedItem);
+    }
+
     // Create stocks from JSON data
     jsonData.boxes.forEach((stockData, index) => {
+      // Skip rendering if filter is enabled and this stock is not visible
+      if (currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.stocks.has(stockData.id)) {
+        return;
+      }
       const boxWidth = 80;
       const boxHeight = 50; // Increased height to accommodate name and amount
       const x =
@@ -918,6 +937,11 @@ const PaperCanvas = () => {
     // Create feedback loops from JSON data
     if (jsonData.connections) {
       jsonData.connections.forEach((connData) => {
+        // Skip rendering if filter is enabled and this connection is not visible
+        if (currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.connections.has(connData.id)) {
+          return;
+        }
+        
         const fromStock = newBoxes.find(
           (box) => box.stockId === connData.fromStockId
         );
@@ -940,7 +964,7 @@ const PaperCanvas = () => {
     // Redraw axes and view
     drawAxes();
     if (paper.view) paper.view.draw();
-  }, [jsonData?.boxes, selectedBoxId]);
+  }, [jsonData?.boxes, selectedBoxId, currentMode, editModeFilterEnabled, selectedItem]);
 
   // Handle connections changes separately to avoid recreating boxes
   useEffect(() => {
@@ -954,9 +978,20 @@ const PaperCanvas = () => {
     });
     paperState.current.connections = [];
 
+    // Apply filter if edit mode filter is enabled
+    let visibleElements = { stocks: new Set(), connections: new Set() };
+    if (currentMode === "edit" && editModeFilterEnabled && selectedItem) {
+      visibleElements = getConnectedElements(selectedItem);
+    }
+
     // Recreate connections
     const newConnections = [];
     jsonData.connections.forEach((connData) => {
+      // Skip rendering if filter is enabled and this connection is not visible
+      if (currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.connections.has(connData.id)) {
+        return;
+      }
+      
       const fromStock = paperState.current.boxes.find(
         (box) => box.stockId === connData.fromStockId
       );
@@ -973,7 +1008,7 @@ const PaperCanvas = () => {
     paperState.current.connections = newConnections;
     setConnections(newConnections);
     if (paper.view) paper.view.draw();
-  }, [jsonData?.connections]);
+  }, [jsonData?.connections, currentMode, editModeFilterEnabled, selectedItem]);
 
   // Keep editor value in sync with jsonData
   useEffect(() => {
@@ -996,11 +1031,42 @@ const PaperCanvas = () => {
     }
   }, [jsonEditorVisible]);
 
-  // Mode system - only one mode can be active at a time
-  const [currentMode, setCurrentMode] = useState("normal"); // 'normal', 'add', 'edit', 'connect'
-  const [pendingStockData, setPendingStockData] = useState(null);
-  const [connectionStart, setConnectionStart] = useState(null);
-  const [tempConnectionLine, setTempConnectionLine] = useState(null);
+
+  
+  // Function to get directly connected elements for filtering
+  const getConnectedElements = (selectedItem) => {
+    if (!selectedItem || !jsonData) return { stocks: new Set(), connections: new Set() };
+    
+    const visibleStocks = new Set();
+    const visibleConnections = new Set();
+    
+    if (selectedItem.type === "stock") {
+      // Add the selected stock itself
+      visibleStocks.add(selectedItem.id);
+      
+      // Find only connections directly involving this stock
+      jsonData.connections?.forEach(conn => {
+        if (conn.fromStockId === selectedItem.id || conn.toStockId === selectedItem.id) {
+          // Add the connection
+          visibleConnections.add(conn.id);
+          // Add only the other stock that is connected through this specific connection
+          if (conn.fromStockId === selectedItem.id) {
+            visibleStocks.add(conn.toStockId);
+          } else {
+            visibleStocks.add(conn.fromStockId);
+          }
+        }
+      });
+    } else if (selectedItem.type === "connection") {
+      // Add the selected connection itself
+      visibleConnections.add(selectedItem.id);
+      // Add only the two stocks that are endpoints of this connection
+      visibleStocks.add(selectedItem.fromStockId);
+      visibleStocks.add(selectedItem.toStockId);
+    }
+    
+    return { stocks: visibleStocks, connections: visibleConnections };
+  };
 
   const addBoxWithNameAndAmount = (name, amount, shape = "rectangle") => {
     // Set pending stock data and enable add mode
@@ -2565,6 +2631,39 @@ const PaperCanvas = () => {
               >
                 <strong>Edit Mode:</strong> Click on a stock or connection to
                 edit it
+              </div>
+              
+              {/* Filter Toggle */}
+              <div
+                style={{
+                  marginBottom: "10px",
+                  padding: "8px",
+                  backgroundColor: "#e3f2fd",
+                  borderRadius: "4px",
+                  border: "1px solid #bbdefb",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  id="edit-filter-toggle"
+                  checked={editModeFilterEnabled}
+                  onChange={(e) => setEditModeFilterEnabled(e.target.checked)}
+                  style={{ margin: 0 }}
+                />
+                <label
+                  htmlFor="edit-filter-toggle"
+                  style={{
+                    margin: 0,
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}
+                >
+                  Show only selected item and connected elements
+                </label>
               </div>
               {selectedItem && selectedItem.type === "stock" ? (
                 <div>

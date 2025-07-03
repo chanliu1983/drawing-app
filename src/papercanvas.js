@@ -168,10 +168,12 @@ const PaperCanvas = () => {
 
   // Simulation state
   const [simulationSteps, setSimulationSteps] = useState(0);
-  const [targetSteps, setTargetSteps] = useState(1);
+
   const [simulationHistory, setSimulationHistory] = useState([]); // Track stock amounts over time
   const [showPlotPanel, setShowPlotPanel] = useState(false);
   const [selectedStockForPlot, setSelectedStockForPlot] = useState("");
+  const [selectedStocksForSum, setSelectedStocksForSum] = useState([]); // For multiple stock selection
+  const [plotMode, setPlotMode] = useState("single"); // "single" or "sum"
 
   const paperState = useRef({
     boxes: [],
@@ -2131,11 +2133,7 @@ const PaperCanvas = () => {
     // refreshBoxes(updatedJsonData); // REMOVED
   };
 
-  const runMultipleSteps = () => {
-    for (let i = 0; i < targetSteps; i++) {
-      runSimulation();
-    }
-  };
+
 
   const resetSimulation = () => {
     // Reset simulation step counter
@@ -3190,85 +3188,25 @@ const PaperCanvas = () => {
               </div>
 
               {/* Step Counter Display */}
-              <div
+              {/* Simulation Button */}
+              <button
                 style={{
-                  marginBottom: "10px",
-                  padding: "8px",
-                  backgroundColor: "#e8f5e8",
+                  width: "100%",
+                  background: "#28a745",
+                  color: "white",
+                  border: "none",
                   borderRadius: "4px",
-                  border: "1px solid #c3e6c3",
-                  textAlign: "center",
+                  padding: "8px",
+                  fontWeight: "bold",
+                  fontSize: "12px",
+                  marginBottom: "10px",
+                }}
+                onClick={() => {
+                  runSimulation();
                 }}
               >
-                <strong>Steps Completed: {simulationSteps}</strong>
-              </div>
-
-              {/* Target Steps Input */}
-              <div style={{ marginBottom: "10px" }}>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "4px",
-                    fontWeight: "bold",
-                    fontSize: "12px",
-                  }}
-                >
-                  Target Steps:
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={targetSteps}
-                  onChange={(e) =>
-                    setTargetSteps(
-                      Math.max(1, Math.min(100, Number(e.target.value)))
-                    )
-                  }
-                  style={{ width: "100%", padding: "4px", marginBottom: "6px" }}
-                />
-              </div>
-
-              {/* Simulation Buttons */}
-              <div
-                style={{ display: "flex", gap: "5px", marginBottom: "10px" }}
-              >
-                <button
-                  style={{
-                    flex: 1,
-                    background: "#28a745",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "8px",
-                    fontWeight: "bold",
-                    fontSize: "12px",
-                  }}
-                  onClick={() => {
-                    runSimulation();
-                  }}
-                >
-                  Run 1 Step
-                </button>
-
-                <button
-                  style={{
-                    flex: 1,
-                    background: "#007bff",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "8px",
-                    fontWeight: "bold",
-                    fontSize: "12px",
-                  }}
-                  onClick={() => {
-                    runMultipleSteps();
-                  }}
-                >
-                  Run {targetSteps} Steps
-                </button>
-              </div>
+                Run 1 Step
+              </button>
 
               <button
                 style={{
@@ -3299,6 +3237,7 @@ const PaperCanvas = () => {
                     border: "1px solid #dee2e6",
                   }}
                 >
+                  {/* Plot Mode Selection */}
                   <div style={{ marginBottom: "8px" }}>
                     <label
                       style={{
@@ -3308,33 +3247,128 @@ const PaperCanvas = () => {
                         fontSize: "12px",
                       }}
                     >
-                      Select Stock to Plot:
+                      Plot Mode:
                     </label>
-                    <select
-                      value={selectedStockForPlot}
-                      onChange={(e) => {
-                        console.log(
-                          "Selected stock ID from dropdown:",
-                          e.target.value
-                        );
-                        setSelectedStockForPlot(e.target.value);
-                      }}
-                      style={{
-                        width: "100%",
-                        padding: "4px",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      <option value="">Choose a stock...</option>
-                      {jsonData.boxes
-                        .filter((box) => box.name && box.shape !== "circle")
-                        .map((box) => (
-                          <option key={box.id} value={String(box.id)}>
-                            {box.name}
-                          </option>
-                        ))}
-                    </select>
+                    <div style={{ display: "flex", gap: "8px", marginBottom: "6px" }}>
+                      <label style={{ fontSize: "11px", display: "flex", alignItems: "center" }}>
+                        <input
+                          type="radio"
+                          value="single"
+                          checked={plotMode === "single"}
+                          onChange={(e) => setPlotMode(e.target.value)}
+                          style={{ marginRight: "4px" }}
+                        />
+                        Single Stock
+                      </label>
+                      <label style={{ fontSize: "11px", display: "flex", alignItems: "center" }}>
+                        <input
+                          type="radio"
+                          value="sum"
+                          checked={plotMode === "sum"}
+                          onChange={(e) => setPlotMode(e.target.value)}
+                          style={{ marginRight: "4px" }}
+                        />
+                        Sum of Stocks
+                      </label>
+                    </div>
                   </div>
+
+                  {/* Single Stock Selection */}
+                  {plotMode === "single" && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <label
+                        style={{
+                          display: "block",
+                          marginBottom: "4px",
+                          fontWeight: "bold",
+                          fontSize: "12px",
+                        }}
+                      >
+                        Select Stock to Plot:
+                      </label>
+                      <select
+                        value={selectedStockForPlot}
+                        onChange={(e) => {
+                          console.log(
+                            "Selected stock ID from dropdown:",
+                            e.target.value
+                          );
+                          setSelectedStockForPlot(e.target.value);
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "4px",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        <option value="">Choose a stock...</option>
+                        {jsonData.boxes
+                          .filter((box) => box.name && box.shape !== "circle")
+                          .map((box) => (
+                            <option key={box.id} value={String(box.id)}>
+                              {box.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Multiple Stock Selection */}
+                  {plotMode === "sum" && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <label
+                        style={{
+                          display: "block",
+                          marginBottom: "4px",
+                          fontWeight: "bold",
+                          fontSize: "12px",
+                        }}
+                      >
+                        Select Stocks to Sum:
+                      </label>
+                      <div
+                        style={{
+                          maxHeight: "120px",
+                          overflowY: "auto",
+                          border: "1px solid #ccc",
+                          borderRadius: "4px",
+                          padding: "4px",
+                          backgroundColor: "white",
+                        }}
+                      >
+                        {jsonData.boxes
+                          .filter((box) => box.name && box.shape !== "circle")
+                          .map((box) => (
+                            <label
+                              key={box.id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                fontSize: "11px",
+                                padding: "2px 0",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedStocksForSum.includes(String(box.id))}
+                                onChange={(e) => {
+                                  const stockId = String(box.id);
+                                  if (e.target.checked) {
+                                    setSelectedStocksForSum(prev => [...prev, stockId]);
+                                  } else {
+                                    setSelectedStocksForSum(prev => prev.filter(id => id !== stockId));
+                                  }
+                                }}
+                                style={{ marginRight: "6px" }}
+                              />
+                              {box.name}
+                            </label>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     style={{
                       width: "100%",
@@ -3347,7 +3381,11 @@ const PaperCanvas = () => {
                       fontSize: "12px",
                     }}
                     onClick={() => setShowPlotPanel(true)}
-                    disabled={!selectedStockForPlot}
+                    disabled={
+                      plotMode === "single" 
+                        ? !selectedStockForPlot 
+                        : selectedStocksForSum.length === 0
+                    }
                   >
                     Show Plot
                   </button>
@@ -3948,7 +3986,7 @@ const PaperCanvas = () => {
       )}
 
       {/* Plot Panel */}
-      {showPlotPanel && selectedStockForPlot && (
+      {showPlotPanel && (plotMode === "single" ? selectedStockForPlot : selectedStocksForSum.length > 0) && (
         <div
           style={{
             position: "fixed",
@@ -3988,14 +4026,25 @@ const PaperCanvas = () => {
               <h3 style={{ margin: 0 }}>
                 Stock Amounts Over Time:{" "}
                 {(() => {
-                  const stock = jsonData.boxes.find(
-                    (box) => String(box.id) === selectedStockForPlot
-                  );
-                  return stock
-                    ? `${stock.name} (Current Overflow: ${
-                        stock.overflowAmount || 0
-                      })`
-                    : "Unknown";
+                  if (plotMode === "single") {
+                    const stock = jsonData.boxes.find(
+                      (box) => String(box.id) === selectedStockForPlot
+                    );
+                    return stock
+                      ? `${stock.name} (Current Overflow: ${
+                          stock.overflowAmount || 0
+                        })`
+                      : "Unknown";
+                  } else {
+                    const selectedStocks = jsonData.boxes.filter((box) =>
+                      selectedStocksForSum.includes(String(box.id))
+                    );
+                    const totalOverflow = selectedStocks.reduce(
+                      (sum, stock) => sum + (stock.overflowAmount || 0),
+                      0
+                    );
+                    return `Sum of ${selectedStocks.map(s => s.name).join(", ")} (Total Overflow: ${totalOverflow})`;
+                  }
                 })()}
               </h3>
               <button
@@ -4018,59 +4067,87 @@ const PaperCanvas = () => {
                   labels: simulationHistory.map((step) => `Step ${step.step}`),
                   datasets: [
                     {
-                      label: "Simulation Amount",
+                      label: plotMode === "single" ? "Simulation Amount" : "Sum of Simulation Amounts",
                       data: simulationHistory.map((step) => {
-                        // Enhanced debug logging with type information
-                        console.log(
-                          `Looking for stock ${selectedStockForPlot} (type: ${typeof selectedStockForPlot}) in step ${
-                            step.step
-                          }`,
-                          {
-                            availableStocks: step.stocks.map(
-                              (s) => `${s.id} (type: ${typeof s.id})`
-                            ),
-                            selectedStockForPlot,
-                            stocksRaw: step.stocks,
-                          }
-                        );
+                        if (plotMode === "single") {
+                          // Enhanced debug logging with type information
+                          console.log(
+                            `Looking for stock ${selectedStockForPlot} (type: ${typeof selectedStockForPlot}) in step ${
+                              step.step
+                            }`,
+                            {
+                              availableStocks: step.stocks.map(
+                                (s) => `${s.id} (type: ${typeof s.id})`
+                              ),
+                              selectedStockForPlot,
+                              stocksRaw: step.stocks,
+                            }
+                          );
 
-                        // Try both string and number comparison since HTML select values are strings
-                        const stock = step.stocks.find(
-                          (s) =>
-                            s.id === selectedStockForPlot || // Exact match
-                            String(s.id) === String(selectedStockForPlot) // String conversion match
-                        );
+                          // Try both string and number comparison since HTML select values are strings
+                          const stock = step.stocks.find(
+                            (s) =>
+                              s.id === selectedStockForPlot || // Exact match
+                              String(s.id) === String(selectedStockForPlot) // String conversion match
+                          );
 
-                        console.log(
-                          stock
-                            ? `Found stock ${stock.name} with amount ${stock.simulationAmount}`
-                            : `Stock not found for ID ${selectedStockForPlot}`
-                        );
+                          console.log(
+                            stock
+                              ? `Found stock ${stock.name} with amount ${stock.simulationAmount}`
+                              : `Stock not found for ID ${selectedStockForPlot}`
+                          );
 
-                        return stock
-                          ? Number(
-                              parseFloat(stock.simulationAmount).toFixed(3)
-                            )
-                          : 0;
+                          return stock
+                            ? Number(
+                                parseFloat(stock.simulationAmount).toFixed(3)
+                              )
+                            : 0;
+                        } else {
+                          // Sum mode: calculate sum of all selected stocks
+                          const selectedStocks = step.stocks.filter((s) =>
+                            selectedStocksForSum.includes(String(s.id))
+                          );
+                          
+                          const totalAmount = selectedStocks.reduce(
+                            (sum, stock) => sum + (parseFloat(stock.simulationAmount) || 0),
+                            0
+                          );
+                          
+                          return Number(totalAmount.toFixed(3));
+                        }
                       }),
                       borderColor: "rgb(75, 192, 192)",
                       backgroundColor: "rgba(75, 192, 192, 0.2)",
                       tension: 0.1,
                     },
                     {
-                      label: "Overflow Amount",
+                      label: plotMode === "single" ? "Overflow Amount" : "Sum of Overflow Amounts",
                       data: simulationHistory.map((step) => {
-                        // Find the stock in this step
-                        const stock = step.stocks.find(
-                          (s) =>
-                            s.id === selectedStockForPlot || // Exact match
-                            String(s.id) === String(selectedStockForPlot) // String conversion match
-                        );
+                        if (plotMode === "single") {
+                          // Find the stock in this step
+                          const stock = step.stocks.find(
+                            (s) =>
+                              s.id === selectedStockForPlot || // Exact match
+                              String(s.id) === String(selectedStockForPlot) // String conversion match
+                          );
 
-                        // Return the overflow amount if it exists, otherwise 0
-                        return stock && stock.overflowAmount
-                          ? Number(parseFloat(stock.overflowAmount).toFixed(3))
-                          : 0;
+                          // Return the overflow amount if it exists, otherwise 0
+                          return stock && stock.overflowAmount
+                            ? Number(parseFloat(stock.overflowAmount).toFixed(3))
+                            : 0;
+                        } else {
+                          // Sum mode: calculate sum of all selected stocks' overflow
+                          const selectedStocks = step.stocks.filter((s) =>
+                            selectedStocksForSum.includes(String(s.id))
+                          );
+                          
+                          const totalOverflow = selectedStocks.reduce(
+                            (sum, stock) => sum + (parseFloat(stock.overflowAmount) || 0),
+                            0
+                          );
+                          
+                          return Number(totalOverflow.toFixed(3));
+                        }
                       }),
                       borderColor: "rgb(255, 99, 132)",
                       backgroundColor: "rgba(255, 99, 132, 0.2)",
@@ -4102,17 +4179,32 @@ const PaperCanvas = () => {
                             stepIndex < simulationHistory.length
                           ) {
                             const step = simulationHistory[stepIndex];
-                            const stock = step.stocks.find(
-                              (s) =>
-                                s.id === selectedStockForPlot ||
-                                String(s.id) === String(selectedStockForPlot)
-                            );
-                            if (stock) {
-                              const capacity =
-                                stock.capacity !== undefined
-                                  ? stock.capacity
-                                  : "unlimited";
-                              return `Capacity: ${capacity}`;
+                            
+                            if (plotMode === "single") {
+                              const stock = step.stocks.find(
+                                (s) =>
+                                  s.id === selectedStockForPlot ||
+                                  String(s.id) === String(selectedStockForPlot)
+                              );
+                              if (stock) {
+                                const capacity =
+                                  stock.capacity !== undefined
+                                    ? stock.capacity
+                                    : "unlimited";
+                                return `Capacity: ${capacity}`;
+                              }
+                            } else {
+                              // Sum mode: show capacities of all selected stocks
+                              const selectedStocks = step.stocks.filter((s) =>
+                                selectedStocksForSum.includes(String(s.id))
+                              );
+                              
+                              const capacityInfo = selectedStocks.map((stock) => {
+                                const capacity = stock.capacity !== undefined ? stock.capacity : "unlimited";
+                                return `${stock.name}: ${capacity}`;
+                              }).join(", ");
+                              
+                              return `Capacities: ${capacityInfo}`;
                             }
                           }
                           return "";

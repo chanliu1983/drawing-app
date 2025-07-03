@@ -1943,21 +1943,18 @@ const PaperCanvas = () => {
 
             // For overflow connections, we need to handle excess differently
             if (connection.isOverflow) {
-              // If this is an overflow connection, we still respect the capacity
-              // but we need to track how much was actually added vs. how much was attempted
-              const actualAdded =
-                Math.min(newAmount, capacity) - currentToAmount;
-              const excessAmount = Math.max(0, amountToAdd - actualAdded);
-
-              toStock.simulationAmount = Math.min(newAmount, capacity);
-
-              // Log the overflow transfer details
-              if (excessAmount > 0) {
+              // For overflow connections, we DO NOT respect the capacity limit
+              // The full overflow amount is added to the target stock
+              toStock.simulationAmount = newAmount;
+              
+              console.log(
+                `Overflow connection: Added full amount ${amountToAdd} to ${toStock.name} without capacity restriction.`
+              );
+              
+              // If the new amount exceeds capacity, log a warning but don't limit it
+              if (newAmount > capacity && capacity !== Infinity) {
                 console.log(
-                  `Overflow connection: Added ${actualAdded} to ${toStock.name}, but ${excessAmount} couldn't be added due to capacity limit.`
-                );
-                console.log(
-                  `Consider adding an overflow connection from ${toStock.name} to handle the excess.`
+                  `Note: ${toStock.name} now exceeds capacity (${toStock.simulationAmount} > ${capacity})`
                 );
               }
             } else {
@@ -2839,7 +2836,7 @@ const PaperCanvas = () => {
                         style={{ fontSize: "12px" }}
                       >
                         Overflow connection (transfers excess amount beyond
-                        capacity)
+                        capacity without respecting target's capacity limit)
                       </label>
                     </div>
                   </div>

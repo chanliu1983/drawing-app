@@ -948,13 +948,38 @@ const PaperCanvas = () => {
           // This was a click, not a drag - handle selection
           // Stop event propagation to prevent canvas click handler from interfering
           event.stopPropagation();
-          
+          if (event.event) {
+            event.event.stopPropagation();
+          }
+
+          const stockId = stockGroup.stockId;
           const stockSelection = { ...stockData, type: "stock" };
-          setSelectedItem(stockSelection);
-          setEditingItem(stockSelection);
-          setSelectedBoxId(stockData.id);
+
+          // In edit mode, maintain the selection properly
+          if (getCurrentMode() === "edit") {
+            setSelectedItem(stockSelection);
+            setEditingItem(stockSelection);
+            setSelectedBoxId(stockData.id);
+          } else {
+            // Switch to edit mode and select the item
+            setSelectedItem(stockSelection);
+            setEditingItem(stockSelection);
+            setSelectedBoxId(stockData.id);
+            setCurrentMode("edit");
+          }
         } else {
-          // This was a drag - keep selection after drag
+          // This was a drag - update position in state but maintain selection
+          const boxIndex = newBoxes.findIndex((b) => b.stockId === stockGroup.stockId);
+          if (boxIndex !== -1) {
+            const newBoxesState = [...newBoxes];
+            newBoxesState[boxIndex] = {
+              ...newBoxesState[boxIndex],
+              x: stockGroup.position.x,
+              y: stockGroup.position.y,
+            };
+            setBoxes(newBoxesState);
+          }
+          // Maintain selection after dragging
           const stockSelection = { ...stockData, type: "stock" };
           setSelectedItem(stockSelection);
           setEditingItem(stockSelection);
@@ -1286,6 +1311,9 @@ const PaperCanvas = () => {
       if (getCurrentMode() === "edit") {
         // Stop event propagation to prevent canvas click handler from interfering
         event.stopPropagation();
+        if (event.event) {
+          event.event.stopPropagation();
+        }
         
         // Use Paper.js hit testing with tolerance for better accuracy
         const hitPoint = event.point || (event.event && event.event.point);
@@ -1342,6 +1370,9 @@ const PaperCanvas = () => {
       if (getCurrentMode() === "edit") {
         // Stop event propagation to prevent canvas click handler from interfering
         event.stopPropagation();
+        if (event.event) {
+          event.event.stopPropagation();
+        }
         
         // Get connectionData from the group
         const groupConnectionData =
@@ -1601,6 +1632,9 @@ const PaperCanvas = () => {
       if (currentMode === "edit") {
         // Stop event propagation to prevent canvas click handler from interfering
         event.stopPropagation();
+        if (event.event) {
+          event.event.stopPropagation();
+        }
         
         // Get connectionData from the group
         const groupConnectionData =
@@ -3834,19 +3868,46 @@ const PaperCanvas = () => {
                   const y = e.clientY - rect.top;
                   const point = new paper.Point(x, y);
                   // Use Paper.js hit testing to check if we clicked on any item
-                  const hitResult = paper.project.hitTest(point);
+                  const hitResult = paper.project.hitTest(point, {
+                    fill: true,
+                    stroke: true,
+                    segments: true,
+                    tolerance: 5
+                  });
+                  
                   // Only clear selection if we clicked on truly empty space or axes
-                  // Give a small delay to avoid interfering with item selection events
+                  // and no stock or connection was clicked
                   if (
                     !hitResult ||
                     (hitResult.item && hitResult.item.name === "axis")
                   ) {
-                    // Use setTimeout to avoid race conditions with item selection
+                    // Add a longer delay to ensure stock selection events complete first
                     setTimeout(() => {
-                      setSelectedItem(null);
-                      setEditingItem(null);
-                      setSelectedBoxId(null);
-                    }, 10);
+                      // Double-check that we're not interfering with a stock selection
+                      const getCurrentMode = () => {
+                        const modeSelect = document.querySelector("#mode-select");
+                        return modeSelect ? modeSelect.value : "normal";
+                      };
+                      
+                      // Only clear if we're not actively selecting something
+                      if (getCurrentMode() === "edit") {
+                        // Check if the hit point is actually within any stock bounds
+                        let hitStock = false;
+                        for (const box of paperState.current.boxes) {
+                          if (box.bounds && box.bounds.contains(point)) {
+                            hitStock = true;
+                            break;
+                          }
+                        }
+                        
+                        // Only clear selection if we definitely didn't hit a stock
+                        if (!hitStock) {
+                          setSelectedItem(null);
+                          setEditingItem(null);
+                          setSelectedBoxId(null);
+                        }
+                      }
+                    }, 50); // Increased delay to ensure stock events complete
                   }
                 }
               }}

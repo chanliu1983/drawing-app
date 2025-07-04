@@ -778,10 +778,8 @@ const PaperCanvas = () => {
 
     // Create stocks from JSON data
     jsonData.boxes.forEach((stockData, index) => {
-      // Skip rendering if filter is enabled and this stock is not visible
-      if (currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.stocks.has(stockData.id)) {
-        return;
-      }
+      // Determine if this stock should be semi-transparent due to filter
+      const isFiltered = currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.stocks.has(stockData.id);
       const boxWidth = 80;
       const boxHeight = 50; // Increased height to accommodate name and amount
       const x =
@@ -887,6 +885,11 @@ const PaperCanvas = () => {
       stockGroup.stockId = stockData.id;
       stockGroup.stockShape = stockData.shape;
       stockGroup.position = new paper.Point(x, y);
+
+      // Apply filter opacity if this stock is filtered
+      if (isFiltered) {
+        stockGroup.opacity = 0.2; // 80% transparency = 20% opacity
+      }
 
       // Add mode-based interaction logic
       let isDragging = false;
@@ -995,10 +998,8 @@ const PaperCanvas = () => {
     // Create feedback loops from JSON data
     if (jsonData.connections) {
       jsonData.connections.forEach((connData) => {
-        // Skip rendering if filter is enabled and this connection is not visible
-        if (currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.connections.has(connData.id)) {
-          return;
-        }
+        // Determine if this connection should be semi-transparent due to filter
+        const isFiltered = currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.connections.has(connData.id);
         
         const fromStock = newBoxes.find(
           (box) => box.stockId === connData.fromStockId
@@ -1008,6 +1009,12 @@ const PaperCanvas = () => {
         );
         if (fromStock && toStock) {
           const connection = createConnection(fromStock, toStock, connData);
+          
+          // Apply filter opacity if this connection is filtered
+          if (isFiltered) {
+            connection.opacity = 0.2; // 80% transparency = 20% opacity
+          }
+          
           newConnections.push(connection);
         }
       });
@@ -1054,10 +1061,8 @@ const PaperCanvas = () => {
     // Recreate connections
     const newConnections = [];
     jsonData.connections.forEach((connData) => {
-      // Skip rendering if filter is enabled and this connection is not visible
-      if (currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.connections.has(connData.id)) {
-        return;
-      }
+      // Determine if this connection should be semi-transparent due to filter
+      const isFiltered = currentMode === "edit" && editModeFilterEnabled && selectedItem && !visibleElements.connections.has(connData.id);
       
       const fromStock = paperState.current.boxes.find(
         (box) => box.stockId === connData.fromStockId
@@ -1068,6 +1073,12 @@ const PaperCanvas = () => {
       if (fromStock && toStock) {
         // Always use fromStock as the first argument, toStock as the second
         const connection = createConnection(fromStock, toStock, connData);
+        
+        // Apply filter opacity if this connection is filtered
+        if (isFiltered) {
+          connection.opacity = 0.2; // 80% transparency = 20% opacity
+        }
+        
         newConnections.push(connection);
       }
     });
